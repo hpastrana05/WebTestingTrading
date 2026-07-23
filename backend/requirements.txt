@@ -1,0 +1,11 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+yfinance>=0.2.54
+curl_cffi>=0.7.0
+pandas==2.2.3
+numpy==2.2.1
+pandas-ta==0.3.14b0
+python-telegram-bot==21.9
+pydantic==2.10.4
+pydantic-settings==2.7.0
+httpx==0.28.1
