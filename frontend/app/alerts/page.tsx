@@ -136,32 +136,38 @@ export default function AlertsPage() {
         {rules.length === 0 ? (
           <p className="muted">No rules yet.</p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Strategy</th>
-                <th>Symbol</th>
-                <th>Enabled</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map((rule) => (
-                <tr key={rule.id}>
-                  <td>{rule.name}</td>
-                  <td>{rule.strategy_id}</td>
-                  <td>{rule.symbol}</td>
-                  <td>{rule.enabled ? "yes" : "no"}</td>
-                  <td>
-                    <button className="secondary" type="button" onClick={() => removeRule(rule.id)}>
-                      Delete
-                    </button>
-                  </td>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Strategy</th>
+                  <th>Symbol</th>
+                  <th>Enabled</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rules.map((rule) => (
+                  <tr key={rule.id}>
+                    <td>{rule.name}</td>
+                    <td>{rule.strategy_id}</td>
+                    <td>{rule.symbol}</td>
+                    <td>{rule.enabled ? "yes" : "no"}</td>
+                    <td>
+                      <button
+                        className="secondary"
+                        type="button"
+                        onClick={() => removeRule(rule.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

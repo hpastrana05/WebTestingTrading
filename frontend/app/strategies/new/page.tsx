@@ -1,7 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import StrategyCreator from "@/components/StrategyCreator";
 
 export default function NewStrategyPage() {
-  return <StrategyCreator />;
+  return (
+    <Suspense fallback={<p className="muted">Loading…</p>}>
+      <StrategyCreator />
+    </Suspense>
+  );
 }

@@ -115,6 +115,15 @@ class StrategyConfigUpdate(BaseModel):
         return data
 
 
+class PineImportRequest(BaseModel):
+    code: str = Field(..., min_length=1, description="Pine Script source")
+
+
+class PineImportResult(BaseModel):
+    config: StrategyConfig
+    warnings: list[str] = Field(default_factory=list)
+
+
 # --- Backtest / tuning / alerts ---
 
 class BacktestRequest(BaseModel):

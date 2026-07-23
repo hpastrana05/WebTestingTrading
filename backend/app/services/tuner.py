@@ -17,6 +17,13 @@ def run_tuning(request: TuningRequest) -> TuningResult:
         raise ValueError("param_grid must include at least one parameter list")
 
     value_lists = [request.param_grid[k] for k in keys]
+    total = 1
+    for values in value_lists:
+        total *= max(len(values), 1)
+    if total > 200:
+        raise ValueError(
+            f"param_grid has {total} combinations (max 200). Reduce some parameter lists."
+        )
     trials: list[TuningTrial] = []
 
     for combo in product(*value_lists):

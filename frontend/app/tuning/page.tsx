@@ -1,9 +1,114 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, StrategyInfo, TuningResult } from "@/lib/api";
 import { DATA_INTERVALS } from "@/lib/intervals";
 import { DATA_PERIODS } from "@/lib/periods";
+
+function suggestGrid(
+  parameters: StrategyInfo["parameters"]
+): Record<string, number[]> {
+  const grid: Record<string, number[]> = {};
+  for (const [name, meta] of Object.entries(parameters || {})) {
+    const d = Number(meta.default);
+    const lo = meta.min ?? d;
+    const hi = meta.max ?? d;
+    const step = meta.step ?? (meta.type === "int" ? 1 : 0.1);
+    // Default: only fan out exits / scales; leave lengths as single values
+    // so custom grids stay small. Expand arrays manually to search more.
+    const fanOut = /atr_mult|rr_ratio|scale|sl_pct|tp_pct/.test(name);
+    if (!fanOut) {
+      grid[name] = [meta.type === "int" ? Math.round(d) : d];
+      continue;
+    }
+    const spread = 2;
+    if (meta.type === "int") {
+      const vals = new Set<number>([
+        Math.round(d),
+        Math.round(Math.max(lo, d - spread * step)),
+        Math.round(Math.min(hi, d + spread * step)),
+      ]);
+      grid[name] = [...vals].filter((v) => v >= lo && v <= hi).sort((a, b) => a - b);
+    } else {
+      const vals = new Set<number>([
+        d,
+        Number(Math.max(lo, d - spread * step).toFixed(4)),
+        Number(Math.min(hi, d + spread * step).toFixed(4)),
+      ]);
+      grid[name] = [...vals].filter((v) => v >= lo && v <= hi).sort((a, b) => a - b);
+    }
+    if (!grid[name].length) grid[name] = [d];
+  }
+  return grid;
+}
+
+function countCombos(grid: Record<string, number[]>): number {
+  const keys = Object.keys(grid);
+  if (!keys.length) return 0;
+  return keys.reduce((acc, k) => acc * Math.max(grid[k].length, 1), 1);
+}
+
+function formatParamValue(value: unknown): string {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return String(value);
+    if (Number.isInteger(value)) return String(value);
+    return String(Number(value.toFixed(4)));
+  }
+  return String(value);
+}
+
+function ParamChips({
+  parameters,
+  highlight,
+}: {
+  parameters: Record<string, unknown>;
+  highlight?: Set<string>;
+}) {
+  const entries = Object.entries(parameters || {});
+  if (!entries.length) {
+    return <span className="muted">—</span>;
+  }
+  return (
+    <div className="param-chips">
+      {entries.map(([key, value]) => (
+        <span
+          key={key}
+          className={`param-chip${highlight?.has(key) ? " is-varied" : ""}`}
+          title={key}
+        >
+          <span className="param-chip-key">{key}</span>
+          <span className="param-chip-val">{formatParamValue(value)}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function variedKeys(trials: TuningResult["trials"]): Set<string> {
+  if (!trials.length) return new Set();
+  const keys = Object.keys(trials[0].parameters || {});
+  const varied = new Set<string>();
+  for (const key of keys) {
+    const first = formatParamValue(trials[0].parameters[key]);
+    if (trials.some((t) => formatParamValue(t.parameters[key]) !== first)) {
+      varied.add(key);
+    }
+  }
+  return varied;
+}
+
+function pickParams(
+  parameters: Record<string, unknown>,
+  keys: Set<string>
+): Record<string, unknown> {
+  if (!keys.size) return parameters;
+  const picked: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (key in parameters) picked[key] = parameters[key];
+  }
+  // If nothing varied (single trial / single-value grid), show everything
+  return Object.keys(picked).length ? picked : parameters;
+}
 
 export default function TuningPage() {
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
@@ -22,6 +127,26 @@ export default function TuningPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const selected = useMemo(
+    () => strategies.find((s) => s.id === strategyId),
+    [strategies, strategyId]
+  );
+
+  const comboHint = useMemo(() => {
+    try {
+      const grid = JSON.parse(gridText) as Record<string, number[]>;
+      const n = countCombos(grid);
+      return n > 0 ? `${n} combination${n === 1 ? "" : "s"}` : "";
+    } catch {
+      return "";
+    }
+  }, [gridText]);
+
+  const variedParamKeys = useMemo(
+    () => (result ? variedKeys(result.trials) : new Set<string>()),
+    [result]
+  );
+
   useEffect(() => {
     api.getStrategies().then((items) => {
       setStrategies(items);
@@ -30,11 +155,19 @@ export default function TuningPage() {
   }, []);
 
   useEffect(() => {
+    if (!strategyId || !selected) return;
+
     if (strategyId === "rsi") {
-      setGridText('{\n  "period": [10, 14],\n  "oversold": [25, 30],\n  "overbought": [70, 75]\n}');
-    } else if (strategyId === "sma_crossover") {
+      setGridText(
+        '{\n  "period": [10, 14],\n  "oversold": [25, 30],\n  "overbought": [70, 75]\n}'
+      );
+      return;
+    }
+    if (strategyId === "sma_crossover") {
       setGridText('{\n  "fast": [5, 10, 15],\n  "slow": [20, 30, 40]\n}');
-    } else if (strategyId === "vwap_momentum") {
+      return;
+    }
+    if (strategyId === "vwap_momentum") {
       setGridText(
         '{\n  "ema_length": [20],\n  "atr_length": [14],\n  "atr_mult": [1.0, 1.1, 1.2],\n  "rr_ratio": [2.0, 2.3, 2.5],\n  "impulse_lookback": [15],\n  "impulse_mult": [1.1]\n}'
       );
@@ -44,8 +177,31 @@ export default function TuningPage() {
       setCommissionPct(0.001);
       setRiskPercent(2);
       setFillOn("next_open");
+      return;
     }
-  }, [strategyId]);
+
+    // Custom / hand-made strategies: load market defaults + auto grid from rule params
+    if (selected.source === "custom") {
+      api
+        .getStrategyConfig(strategyId)
+        .then((cfg) => {
+          if (cfg.yahoo_ticker) setSymbol(cfg.yahoo_ticker);
+          if (cfg.interval) setInterval(cfg.interval);
+          if (cfg.period) setPeriod(cfg.period);
+        })
+        .catch(() => {
+          /* keep current market fields */
+        });
+
+      const params = selected.parameters || {};
+      if (!Object.keys(params).length) {
+        setGridText("{\n}");
+        return;
+      }
+      const grid = suggestGrid(params);
+      setGridText(JSON.stringify(grid, null, 2));
+    }
+  }, [strategyId, selected]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -54,6 +210,19 @@ export default function TuningPage() {
     setResult(null);
     try {
       const param_grid = JSON.parse(gridText);
+      if (!param_grid || !Object.keys(param_grid).length) {
+        throw new Error(
+          selected?.source === "custom"
+            ? "This custom strategy has no numeric rule parameters to tune (indicator lengths, ATR/R:R, scales, TP/SL %). Edit the strategy first."
+            : "param_grid must include at least one parameter list"
+        );
+      }
+      const combos = countCombos(param_grid);
+      if (combos > 200) {
+        throw new Error(
+          `Grid has ${combos} combinations (max 200). Reduce some arrays to fewer values.`
+        );
+      }
       const data = await api.runTuning({
         strategy_id: strategyId,
         symbol,
@@ -81,7 +250,8 @@ export default function TuningPage() {
         <h1>Parameter tuning</h1>
         <p className="muted">
           Grid search over strategy parameters using the same market and cost settings as
-          backtest.
+          backtest. Custom strategies tune indicator lengths, scales, and TP/SL / ATR fields
+          from the Strategy Creator.
         </p>
       </div>
 
@@ -92,7 +262,7 @@ export default function TuningPage() {
             <select value={strategyId} onChange={(e) => setStrategyId(e.target.value)}>
               {strategies.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name}
+                  {s.source === "custom" ? `${s.name} (custom)` : s.name}
                 </option>
               ))}
             </select>
@@ -191,8 +361,16 @@ export default function TuningPage() {
 
         <label>
           Parameter grid (JSON)
-          <textarea value={gridText} onChange={(e) => setGridText(e.target.value)} />
+          {comboHint ? <span className="muted"> · {comboHint}</span> : null}
+          <textarea value={gridText} onChange={(e) => setGridText(e.target.value)} rows={12} />
         </label>
+        {selected?.source === "custom" && (
+          <p className="muted">
+            Keys like <code>entry0_R_length</code>, <code>exit0_atr_mult</code>,{" "}
+            <code>entry1_scale</code> come from your rule tree. Edit the arrays to search more
+            (or fewer) values.
+          </p>
+        )}
 
         <button type="submit" disabled={loading || !strategyId}>
           {loading ? "Searching…" : "Run tuning"}
@@ -211,39 +389,62 @@ export default function TuningPage() {
               </strong>
             </div>
             <div className="metric">
-              Best params
-              <strong style={{ fontSize: "0.95rem" }}>
-                {JSON.stringify(result.best_parameters)}
-              </strong>
-            </div>
-            <div className="metric">
               Trials
               <strong>{result.trials.length}</strong>
             </div>
           </div>
 
-          <table>
-            <thead>
-              <tr>
-                <th>Parameters</th>
-                <th>Return %</th>
-                <th>Final equity</th>
-                <th>Trades</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.trials.map((trial, index) => (
-                <tr key={index}>
-                  <td>
-                    <code>{JSON.stringify(trial.parameters)}</code>
-                  </td>
-                  <td>{trial.total_return_pct.toFixed(2)}</td>
-                  <td>{trial.final_equity.toLocaleString()}</td>
-                  <td>{trial.num_trades}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="stack">
+            <h2>Best parameters</h2>
+            <ParamChips
+              parameters={pickParams(result.best_parameters, variedParamKeys)}
+              highlight={variedParamKeys}
+            />
+            {variedParamKeys.size > 0 && (
+              <p className="muted">
+                Highlighted chips are the values that changed across the grid search.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <h2>All trials</h2>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Parameters</th>
+                    <th>Return %</th>
+                    <th>Final equity</th>
+                    <th>Trades</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.trials.map((trial, index) => (
+                    <tr key={index}>
+                      <td>{index + 1}</td>
+                      <td>
+                        <ParamChips
+                          parameters={pickParams(trial.parameters, variedParamKeys)}
+                          highlight={variedParamKeys}
+                        />
+                      </td>
+                      <td
+                        className={
+                          trial.total_return_pct >= 0 ? "positive" : "negative"
+                        }
+                      >
+                        {trial.total_return_pct.toFixed(2)}
+                      </td>
+                      <td>{trial.final_equity.toLocaleString()}</td>
+                      <td>{trial.num_trades}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
       )}
     </div>

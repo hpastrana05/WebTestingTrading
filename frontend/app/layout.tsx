@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { ReactNode } from "react";
+import ThemeControls from "@/components/ThemeControls";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const links = [
@@ -17,7 +19,10 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="forest" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body>
         <div className="shell">
           <header className="topbar">
@@ -28,13 +33,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 <p>Private research workspace</p>
               </div>
             </div>
-            <nav>
-              {links.map((link) => (
-                <Link key={link.href} href={link.href}>
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
+            <div className="topbar-right">
+              <nav>
+                {links.map((link) => (
+                  <Link key={link.href} href={link.href}>
+                    {link.label}
+                  </Link>
+                ))}
+              </nav>
+              <ThemeControls />
+            </div>
           </header>
           <main>{children}</main>
         </div>

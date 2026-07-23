@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { Suspense, use } from "react";
 import StrategyCreator from "@/components/StrategyCreator";
 
 export default function EditStrategyPage({
@@ -9,5 +9,9 @@ export default function EditStrategyPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  return <StrategyCreator strategyId={id} />;
+  return (
+    <Suspense fallback={<p className="muted">Loading…</p>}>
+      <StrategyCreator strategyId={id} />
+    </Suspense>
+  );
 }

@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import RuleBuilder, {
   emptyGroup,
   emptyStructureAtr,
   normalizeGroup,
 } from "@/components/RuleBuilder";
+import PineImportPanel from "@/components/PineImportPanel";
 import {
   api,
   IndicatorCatalog,
@@ -115,13 +116,38 @@ const defaultConfig = (): Omit<StrategyConfig, "id"> => ({
   exit: emptyGroup("any"),
 });
 
+function applyImported(
+  saved: Omit<StrategyConfig, "id"> | StrategyConfig
+): Omit<StrategyConfig, "id"> {
+  return {
+    name: saved.name,
+    broker_ticker: saved.broker_ticker || "",
+    yahoo_ticker: saved.yahoo_ticker || "AAPL",
+    interval: saved.interval || "1d",
+    period: saved.period || "1y",
+    direction: saved.direction || "long",
+    trade_session: saved.trade_session || "",
+    close_session: saved.close_session || "",
+    timezone: saved.timezone || "Europe/Madrid",
+    one_trade_per_day: Boolean(saved.one_trade_per_day),
+    entry: normalizeGroup(saved.entry),
+    entry_short: normalizeGroup(saved.entry_short || emptyGroup("all")),
+    exit: normalizeGroup(saved.exit),
+  };
+}
+
 export default function StrategyCreator({ strategyId }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [catalog, setCatalog] = useState<IndicatorCatalog | null>(null);
   const [config, setConfig] = useState(defaultConfig());
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showImport, setShowImport] = useState(
+    () => !strategyId || searchParams.get("import") === "pine"
+  );
 
   useEffect(() => {
     api
@@ -135,21 +161,7 @@ export default function StrategyCreator({ strategyId }: Props) {
     api
       .getStrategyConfig(strategyId)
       .then((saved) => {
-        setConfig({
-          name: saved.name,
-          broker_ticker: saved.broker_ticker || "",
-          yahoo_ticker: saved.yahoo_ticker || "AAPL",
-          interval: saved.interval || "1d",
-          period: saved.period || "1y",
-          direction: saved.direction || "long",
-          trade_session: saved.trade_session || "",
-          close_session: saved.close_session || "",
-          timezone: saved.timezone || "Europe/Madrid",
-          one_trade_per_day: Boolean(saved.one_trade_per_day),
-          entry: normalizeGroup(saved.entry),
-          entry_short: normalizeGroup(saved.entry_short || emptyGroup("all")),
-          exit: normalizeGroup(saved.exit),
-        });
+        setConfig(applyImported(saved));
       })
       .catch((err: Error) => setError(err.message));
   }, [strategyId]);
@@ -164,6 +176,14 @@ export default function StrategyCreator({ strategyId }: Props) {
 
   function setExit(exit: RuleNode) {
     setConfig((prev) => ({ ...prev, exit }));
+  }
+
+  function onPineImported(draft: Omit<StrategyConfig, "id">, notes: string[]) {
+    setConfig(applyImported(draft));
+    setWarnings(notes);
+    setStatus("Pine Script converted — review rules below, then save.");
+    setError("");
+    setShowImport(false);
   }
 
   async function onSave(event: FormEvent) {
@@ -236,16 +256,25 @@ export default function StrategyCreator({ strategyId }: Props) {
         <div>
           <h1>Strategy Creator</h1>
           <p className="muted">
-            Build entry/exit rules with sessions, impulse (× scale), VWAP, and ATR/R:R exits.
+            Build entry/exit rules with sessions, impulse (× scale), VWAP, and ATR/R:R exits —
+            or import from Pine Script.
           </p>
         </div>
         <div className="row" style={{ flex: "0 0 auto" }}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setShowImport((v) => !v)}
+          >
+            {showImport ? "Hide Pine import" : "Import Pine Script"}
+          </button>
           {!strategyId && (
             <button
               type="button"
               className="secondary"
               onClick={() => {
                 setConfig(vwapMomentumTemplate());
+                setWarnings([]);
                 setStatus("Loaded VWAP Momentum Pro template — review and save.");
               }}
             >
@@ -257,6 +286,19 @@ export default function StrategyCreator({ strategyId }: Props) {
           </Link>
         </div>
       </div>
+
+      {showImport && <PineImportPanel onImported={onPineImported} />}
+
+      {warnings.length > 0 && (
+        <div className="warning-list">
+          <strong>Import notes</strong>
+          <ul>
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <section className="panel stack">
         <h2>Strategy Parameters</h2>

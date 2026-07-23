@@ -6,6 +6,8 @@ from app.schemas import (
     AlertRuleUpdate,
     BacktestRequest,
     BacktestResult,
+    PineImportRequest,
+    PineImportResult,
     StrategyConfig,
     StrategyConfigUpdate,
     StrategyInfo,
@@ -17,6 +19,7 @@ from app.services.alerts import check_alert_rules
 from app.services.backtester import run_backtest
 from app.services.indicator_catalog import INDICATOR_CATALOG, OPERATORS, PRICE_FIELDS
 from app.services.market_data import fetch_ohlcv
+from app.services.pine_import import convert_pinescript
 from app.services.telegram_bot import send_telegram_message
 from app.services.tuner import run_tuning
 from app.strategies import get_strategy, list_builtin_strategies
@@ -58,12 +61,13 @@ def get_strategies():
             )
         )
     for config in storage.list_strategy_configs():
+        custom = ConfigStrategy(config)
         items.append(
             StrategyInfo(
                 id=config.id or "",
                 name=config.name,
                 description=f"Custom · {config.direction} · {config.yahoo_ticker} · {config.interval}",
-                parameters={},
+                parameters=custom.parameters,
                 source="custom",
                 direction=config.direction,
             )
@@ -104,6 +108,21 @@ def remove_strategy_config(strategy_id: str):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True}
+
+
+@router.post("/strategies/import-pine", response_model=PineImportResult)
+def import_pinescript(body: PineImportRequest):
+    """Best-effort convert Pine Script into a Strategy Creator draft."""
+    try:
+        result = convert_pinescript(body.code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — surface converter bugs cleanly
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not import Pine Script: {exc}",
+        ) from exc
+    return PineImportResult(config=result["config"], warnings=result["warnings"])
 
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyInfo)

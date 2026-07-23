@@ -90,7 +90,7 @@ function EquitySpark({ points }: { points: EquityPoint[] }) {
           <path
             d={chart.buyHoldPath}
             fill="none"
-            stroke="#7a8794"
+            stroke="var(--muted)"
             strokeWidth="1.5"
             strokeDasharray="3 2"
             vectorEffect="non-scaling-stroke"
@@ -98,7 +98,7 @@ function EquitySpark({ points }: { points: EquityPoint[] }) {
           <path
             d={chart.strategyPath}
             fill="none"
-            stroke="#3d9b6e"
+            stroke="var(--accent)"
             strokeWidth="1.5"
             vectorEffect="non-scaling-stroke"
           />
@@ -109,7 +109,7 @@ function EquitySpark({ points }: { points: EquityPoint[] }) {
                 y1={0}
                 x2={hoverX}
                 y2={100}
-                stroke="rgba(255,255,255,0.28)"
+                stroke="var(--line)"
                 strokeWidth="0.4"
                 vectorEffect="non-scaling-stroke"
               />
@@ -117,14 +117,14 @@ function EquitySpark({ points }: { points: EquityPoint[] }) {
                 cx={hoverX}
                 cy={yOf(active.equity)}
                 r="1.2"
-                fill="#3d9b6e"
+                fill="var(--accent)"
                 vectorEffect="non-scaling-stroke"
               />
               <circle
                 cx={hoverX}
                 cy={yOf(active.buy_hold)}
                 r="1.2"
-                fill="#7a8794"
+                fill="var(--muted)"
                 vectorEffect="non-scaling-stroke"
               />
             </>
@@ -431,40 +431,54 @@ export default function BacktestClient() {
 
           <div>
             <h2>Trades</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Entry</th>
-                  <th>Exit</th>
-                  <th>Side</th>
-                  <th>Exit type</th>
-                  <th>Entry price</th>
-                  <th>Exit price</th>
-                  <th>Shares</th>
-                  <th>PnL</th>
-                  <th>PnL %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.trades.map((trade, index) => (
-                  <tr key={`${trade.entry_date}-${trade.exit_date}-${index}`}>
-                    <td>{trade.entry_date}</td>
-                    <td>{trade.exit_date}</td>
-                    <td>{trade.side}</td>
-                    <td>{trade.exit_reason}</td>
-                    <td>{trade.entry_price.toFixed(2)}</td>
-                    <td>{trade.exit_price.toFixed(2)}</td>
-                    <td>{trade.shares.toFixed(4)}</td>
-                    <td className={trade.pnl >= 0 ? "positive" : "negative"}>
-                      {trade.pnl.toFixed(2)}
-                    </td>
-                    <td className={trade.pnl_pct >= 0 ? "positive" : "negative"}>
-                      {trade.pnl_pct.toFixed(2)}%
-                    </td>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Entry</th>
+                    <th>Exit</th>
+                    <th>Side</th>
+                    <th>Exit type</th>
+                    <th>Entry price</th>
+                    <th>Exit price</th>
+                    <th>Shares</th>
+                    <th>PnL</th>
+                    <th>PnL %</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {result.trades.map((trade, index) => (
+                    <tr key={`${trade.entry_date}-${trade.exit_date}-${index}`}>
+                      <td>{trade.entry_date}</td>
+                      <td>{trade.exit_date}</td>
+                      <td>
+                        <span
+                          className={`trade-tag trade-side-${trade.side.toLowerCase()}`}
+                        >
+                          {trade.side}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          className={`trade-tag trade-exit-${trade.exit_reason.toLowerCase()}`}
+                        >
+                          {trade.exit_reason}
+                        </span>
+                      </td>
+                      <td>{trade.entry_price.toFixed(2)}</td>
+                      <td>{trade.exit_price.toFixed(2)}</td>
+                      <td>{trade.shares.toFixed(4)}</td>
+                      <td className={trade.pnl >= 0 ? "positive" : "negative"}>
+                        {trade.pnl.toFixed(2)}
+                      </td>
+                      <td className={trade.pnl_pct >= 0 ? "positive" : "negative"}>
+                        {trade.pnl_pct.toFixed(2)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       )}

@@ -169,6 +169,11 @@ export const api = {
     }),
   deleteStrategyConfig: (id: string) =>
     request<{ ok: boolean }>(`/api/strategies/configs/${id}`, { method: "DELETE" }),
+  importPine: (code: string) =>
+    request<{ config: StrategyConfig; warnings: string[] }>("/api/strategies/import-pine", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
   runBacktest: (body: unknown) =>
     request<BacktestResult>("/api/backtest", {
       method: "POST",

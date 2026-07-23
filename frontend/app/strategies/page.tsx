@@ -38,9 +38,14 @@ export default function StrategiesPage() {
             Build custom strategies with pandas-ta indicators, or use the built-ins.
           </p>
         </div>
-        <Link href="/strategies/new" className="button-link">
-          + Create strategy
-        </Link>
+        <div className="row" style={{ flex: "0 0 auto" }}>
+          <Link href="/strategies/new" className="button-link">
+            + Create strategy
+          </Link>
+          <Link href="/strategies/new?import=pine" className="secondary-link">
+            Import Pine Script
+          </Link>
+        </div>
       </div>
 
       {error && <div className="error">{error}</div>}
