@@ -69,9 +69,7 @@ On the Pi (or any Docker host):
 
 ```bash
 cp .env.example .env
-# edit .env — set TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-# for access from other devices on your LAN, set e.g.:
-# NEXT_PUBLIC_API_URL=http://192.168.x.x:8000
+# edit .env — set TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID if you want alerts
 
 docker compose up -d --build
 ```
@@ -79,6 +77,17 @@ docker compose up -d --build
 - Frontend: `http://<pi-ip>:3000`
 - Backend/API: `http://<pi-ip>:8000`
 - OpenAPI: `http://<pi-ip>:8000/docs`
+
+The UI talks to **same-origin** `/api` on port 3000; Next.js proxies to the backend container. You do **not** need to set `NEXT_PUBLIC_API_URL` to the Pi IP anymore.
+
+If strategies show “Failed to fetch”, check:
+
+```bash
+docker compose ps
+docker logs trading-backend --tail 80
+curl -s http://127.0.0.1:8000/api/health
+curl -s http://127.0.0.1:3000/api/health
+```
 
 Images (`python:3.12-slim`, `node:22-bookworm-slim`) support `linux/arm64`.
 

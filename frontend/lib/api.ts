@@ -1,4 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Empty = same-origin /api (Next.js rewrite → backend). Works on LAN / Pi / localhost.
+// Set NEXT_PUBLIC_API_URL only if the API is on a different public host.
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
