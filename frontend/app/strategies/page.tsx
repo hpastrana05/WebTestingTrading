@@ -61,9 +61,9 @@ export default function StrategiesPage() {
                 <p className="muted" style={{ marginTop: 10 }}>
                   {strategy.interval} · {strategy.period} · {strategy.direction}
                 </p>
-                <div className="row" style={{ marginTop: 14 }}>
+                <div className="card-actions">
                   <Link href={`/strategies/${strategy.id}`} className="button-link">
-                    Edit
+                    Modify
                   </Link>
                   <Link
                     href={`/backtest?strategy=${strategy.id}`}
@@ -95,6 +95,14 @@ export default function StrategiesPage() {
               <p className="muted" style={{ marginTop: 12 }}>
                 id: <code>{strategy.id}</code>
               </p>
+              <div className="card-actions">
+                <Link
+                  href={`/backtest?strategy=${strategy.id}`}
+                  className="button-link"
+                >
+                  Backtest
+                </Link>
+              </div>
             </article>
           ))}
         </div>

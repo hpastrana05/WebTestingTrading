@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import RuleBuilder, { emptyGroup, emptyStructureAtr } from "@/components/RuleBuilder";
+import RuleBuilder, {
+  emptyGroup,
+  emptyStructureAtr,
+  normalizeGroup,
+} from "@/components/RuleBuilder";
 import {
   api,
   IndicatorCatalog,
@@ -133,18 +137,18 @@ export default function StrategyCreator({ strategyId }: Props) {
       .then((saved) => {
         setConfig({
           name: saved.name,
-          broker_ticker: saved.broker_ticker,
-          yahoo_ticker: saved.yahoo_ticker,
-          interval: saved.interval,
-          period: saved.period,
+          broker_ticker: saved.broker_ticker || "",
+          yahoo_ticker: saved.yahoo_ticker || "AAPL",
+          interval: saved.interval || "1d",
+          period: saved.period || "1y",
           direction: saved.direction || "long",
           trade_session: saved.trade_session || "",
           close_session: saved.close_session || "",
           timezone: saved.timezone || "Europe/Madrid",
           one_trade_per_day: Boolean(saved.one_trade_per_day),
-          entry: saved.entry,
-          entry_short: saved.entry_short || emptyGroup("all"),
-          exit: saved.exit,
+          entry: normalizeGroup(saved.entry),
+          entry_short: normalizeGroup(saved.entry_short || emptyGroup("all")),
+          exit: normalizeGroup(saved.exit),
         });
       })
       .catch((err: Error) => setError(err.message));
@@ -188,11 +192,18 @@ export default function StrategyCreator({ strategyId }: Props) {
         throw new Error("Add at least one exit signal (or TP/SL / ATR R:R)");
       }
 
+      const payload: Omit<StrategyConfig, "id"> = {
+        ...config,
+        entry: normalizeGroup(config.entry),
+        entry_short: normalizeGroup(config.entry_short),
+        exit: normalizeGroup(config.exit),
+      };
+
       if (strategyId) {
-        await api.updateStrategyConfig(strategyId, config);
+        await api.updateStrategyConfig(strategyId, payload);
         setStatus("Strategy updated.");
       } else {
-        const created = await api.createStrategyConfig(config);
+        const created = await api.createStrategyConfig(payload);
         setStatus("Strategy saved.");
         router.push(`/strategies/${created.id}`);
       }

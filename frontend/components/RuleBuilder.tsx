@@ -42,6 +42,7 @@ export function emptyCondition(catalog: IndicatorCatalog): RuleNode {
     left: defaultOperand("indicator", catalog),
     operator: ">",
     right: defaultOperand("value", catalog),
+    right_scale: 1,
   };
 }
 
@@ -67,6 +68,40 @@ export function emptyStructureAtr(
   };
 }
 
+/** Normalize API / legacy nodes so the editor never crashes on partial data. */
+export function normalizeGroup(node: RuleNode | null | undefined): RuleNode {
+  if (!node || typeof node !== "object") {
+    return emptyGroup("all");
+  }
+  if (node.type === "risk") {
+    return {
+      type: "risk",
+      risk: node.risk || "stop_loss",
+      pct: node.pct ?? 2,
+      atr_length: node.atr_length ?? 14,
+      atr_mult: node.atr_mult ?? 1.1,
+      rr_ratio: node.rr_ratio ?? 2.3,
+    };
+  }
+  if (node.type === "condition") {
+    return {
+      type: "condition",
+      left: node.left || { kind: "price", field: "Close" },
+      operator: node.operator || ">",
+      right: node.right || { kind: "value", value: 0 },
+      right_scale: node.right_scale ?? 1,
+    };
+  }
+  // group (or unknown → treat as group)
+  return {
+    type: "group",
+    logic: node.logic === "any" ? "any" : "all",
+    children: (node.children || []).map((child) =>
+      child?.type === "group" ? normalizeGroup(child) : normalizeGroup(child)
+    ),
+  };
+}
+
 function OperandEditor({
   operand,
   catalog,
@@ -76,12 +111,13 @@ function OperandEditor({
   catalog: IndicatorCatalog;
   onChange: (next: Operand) => void;
 }) {
-  const indicator = catalog.indicators.find((i) => i.id === operand.indicator);
+  const kind = operand?.kind || "indicator";
+  const indicator = catalog.indicators.find((i) => i.id === operand?.indicator);
 
   return (
     <div className="operand">
       <select
-        value={operand.kind}
+        value={kind}
         onChange={(e) =>
           onChange(defaultOperand(e.target.value as Operand["kind"], catalog))
         }
@@ -91,10 +127,10 @@ function OperandEditor({
         <option value="value">Value</option>
       </select>
 
-      {operand.kind === "price" && (
+      {kind === "price" && (
         <select
           value={operand.field || "Close"}
-          onChange={(e) => onChange({ ...operand, field: e.target.value })}
+          onChange={(e) => onChange({ ...operand, kind: "price", field: e.target.value })}
         >
           {catalog.price_fields.map((f) => (
             <option key={f.id} value={f.id}>
@@ -104,19 +140,21 @@ function OperandEditor({
         </select>
       )}
 
-      {operand.kind === "value" && (
+      {kind === "value" && (
         <input
           type="number"
           step="any"
           value={operand.value ?? 0}
-          onChange={(e) => onChange({ ...operand, value: Number(e.target.value) })}
+          onChange={(e) =>
+            onChange({ ...operand, kind: "value", value: Number(e.target.value) })
+          }
         />
       )}
 
-      {operand.kind === "indicator" && (
+      {kind === "indicator" && (
         <>
           <select
-            value={operand.indicator || ""}
+            value={operand.indicator || catalog.indicators[0]?.id || ""}
             onChange={(e) => {
               const next = catalog.indicators.find((i) => i.id === e.target.value);
               if (!next) return;
@@ -128,9 +166,6 @@ function OperandEditor({
               });
             }}
           >
-            <option value="" disabled>
-              Select signal logic...
-            </option>
             {catalog.indicators.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.label}
@@ -223,7 +258,7 @@ function RiskRow({
               type="number"
               min={2}
               value={node.atr_length ?? 14}
-              onChange={(e) => onChange({ ...node, atr_length: Number(e.target.value) })}
+              onChange={(e) => onChange({ ...node, type: "risk", atr_length: Number(e.target.value) })}
             />
           </label>
           <label className="param-inline">
@@ -233,7 +268,7 @@ function RiskRow({
               min={0.1}
               step={0.1}
               value={node.atr_mult ?? 1.1}
-              onChange={(e) => onChange({ ...node, atr_mult: Number(e.target.value) })}
+              onChange={(e) => onChange({ ...node, type: "risk", atr_mult: Number(e.target.value) })}
             />
           </label>
           <label className="param-inline">
@@ -243,7 +278,7 @@ function RiskRow({
               min={0.5}
               step={0.1}
               value={node.rr_ratio ?? 2.3}
-              onChange={(e) => onChange({ ...node, rr_ratio: Number(e.target.value) })}
+              onChange={(e) => onChange({ ...node, type: "risk", rr_ratio: Number(e.target.value) })}
             />
           </label>
         </>
@@ -255,7 +290,7 @@ function RiskRow({
             min={0.1}
             step={0.1}
             value={node.pct ?? 2}
-            onChange={(e) => onChange({ ...node, pct: Number(e.target.value) })}
+            onChange={(e) => onChange({ ...node, type: "risk", pct: Number(e.target.value) })}
           />
         </label>
       )}
@@ -277,17 +312,20 @@ function ConditionRow({
   onChange: (next: RuleNode) => void;
   onRemove: () => void;
 }) {
+  const left = node.left || defaultOperand("indicator", catalog);
+  const right = node.right || defaultOperand("value", catalog);
+
   return (
     <div className="rule-row">
       <OperandEditor
-        operand={node.left || defaultOperand("indicator", catalog)}
+        operand={left}
         catalog={catalog}
-        onChange={(left) => onChange({ ...node, left })}
+        onChange={(nextLeft) => onChange({ ...node, type: "condition", left: nextLeft })}
       />
       <select
         className="operator"
         value={node.operator || ">"}
-        onChange={(e) => onChange({ ...node, operator: e.target.value })}
+        onChange={(e) => onChange({ ...node, type: "condition", operator: e.target.value })}
       >
         {catalog.operators.map((op) => (
           <option key={op.id} value={op.id}>
@@ -296,9 +334,9 @@ function ConditionRow({
         ))}
       </select>
       <OperandEditor
-        operand={node.right || defaultOperand("value", catalog)}
+        operand={right}
         catalog={catalog}
-        onChange={(right) => onChange({ ...node, right })}
+        onChange={(nextRight) => onChange({ ...node, type: "condition", right: nextRight })}
       />
       <label className="param-inline" title="Multiply right side before compare (e.g. 1.1)">
         <span>× scale</span>
@@ -307,7 +345,9 @@ function ConditionRow({
           min={0}
           step={0.1}
           value={node.right_scale ?? 1}
-          onChange={(e) => onChange({ ...node, right_scale: Number(e.target.value) })}
+          onChange={(e) =>
+            onChange({ ...node, type: "condition", right_scale: Number(e.target.value) })
+          }
         />
       </label>
       <button type="button" className="icon-btn" onClick={onRemove} aria-label="Remove">
@@ -330,16 +370,21 @@ function GroupEditor({
   nested?: boolean;
   allowRisk?: boolean;
 }) {
-  const children = group.children || [];
+  const safeGroup: RuleNode = {
+    type: "group",
+    logic: group.logic === "any" ? "any" : "all",
+    children: Array.isArray(group.children) ? group.children : [],
+  };
+  const children = safeGroup.children || [];
 
   function updateChild(index: number, next: RuleNode) {
     const copy = [...children];
     copy[index] = next;
-    onChange({ ...group, children: copy });
+    onChange({ ...safeGroup, children: copy });
   }
 
   function removeChild(index: number) {
-    onChange({ ...group, children: children.filter((_, i) => i !== index) });
+    onChange({ ...safeGroup, children: children.filter((_, i) => i !== index) });
   }
 
   return (
@@ -348,9 +393,9 @@ function GroupEditor({
         <label>
           {nested ? "Group logic" : "Root logic"}
           <select
-            value={group.logic || "all"}
+            value={safeGroup.logic || "all"}
             onChange={(e) =>
-              onChange({ ...group, logic: e.target.value as "all" | "any" })
+              onChange({ ...safeGroup, logic: e.target.value as "all" | "any" })
             }
           >
             <option value="all">ALL (AND)</option>
@@ -362,7 +407,10 @@ function GroupEditor({
             type="button"
             className="secondary"
             onClick={() =>
-              onChange({ ...group, children: [...children, emptyCondition(catalog)] })
+              onChange({
+                ...safeGroup,
+                children: [...children, emptyCondition(catalog)],
+              })
             }
           >
             + Add Signal
@@ -374,7 +422,7 @@ function GroupEditor({
                 className="secondary"
                 onClick={() =>
                   onChange({
-                    ...group,
+                    ...safeGroup,
                     children: [...children, emptyRisk("stop_loss", 2)],
                   })
                 }
@@ -386,7 +434,7 @@ function GroupEditor({
                 className="secondary"
                 onClick={() =>
                   onChange({
-                    ...group,
+                    ...safeGroup,
                     children: [...children, emptyRisk("take_profit", 4)],
                   })
                 }
@@ -398,7 +446,7 @@ function GroupEditor({
                 className="secondary"
                 onClick={() =>
                   onChange({
-                    ...group,
+                    ...safeGroup,
                     children: [...children, emptyStructureAtr()],
                   })
                 }
@@ -412,8 +460,8 @@ function GroupEditor({
             className="secondary"
             onClick={() =>
               onChange({
-                ...group,
-                children: [...children, emptyGroup(group.logic || "all")],
+                ...safeGroup,
+                children: [...children, emptyGroup(safeGroup.logic || "all")],
               })
             }
           >
@@ -427,45 +475,52 @@ function GroupEditor({
       )}
 
       <div className="stack">
-        {children.map((child, index) =>
-          child.type === "group" ? (
-            <div key={index} className="nested-wrap">
-              <div className="nested-toolbar">
-                <strong>Nested group</strong>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  onClick={() => removeChild(index)}
-                  aria-label="Remove group"
-                >
-                  ×
-                </button>
+        {children.map((child, index) => {
+          const kind = child?.type || "condition";
+          if (kind === "group") {
+            return (
+              <div key={index} className="nested-wrap">
+                <div className="nested-toolbar">
+                  <strong>Nested group</strong>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => removeChild(index)}
+                    aria-label="Remove group"
+                  >
+                    ×
+                  </button>
+                </div>
+                <GroupEditor
+                  group={normalizeGroup(child)}
+                  catalog={catalog}
+                  nested
+                  allowRisk={allowRisk}
+                  onChange={(next) => updateChild(index, next)}
+                />
               </div>
-              <GroupEditor
-                group={child}
-                catalog={catalog}
-                nested
-                allowRisk={allowRisk}
+            );
+          }
+          if (kind === "risk") {
+            return (
+              <RiskRow
+                key={index}
+                node={normalizeGroup(child)}
                 onChange={(next) => updateChild(index, next)}
+                onRemove={() => removeChild(index)}
               />
-            </div>
-          ) : child.type === "risk" ? (
-            <RiskRow
-              key={index}
-              node={child}
-              onChange={(next) => updateChild(index, next)}
-              onRemove={() => removeChild(index)}
-            />
-          ) : (
+            );
+          }
+          return (
             <ConditionRow
               key={index}
-              node={child}
+              node={normalizeGroup(child)}
               catalog={catalog}
               onChange={(next) => updateChild(index, next)}
               onRemove={() => removeChild(index)}
             />
-          )
-        )}
+          );
+        })}
       </div>
     </div>
   );
@@ -479,6 +534,7 @@ export default function RuleBuilder({
   allowRisk = false,
   hint,
 }: Props) {
+  const safe = normalizeGroup(group);
   return (
     <section className="panel stack">
       <h2>{title}</h2>
@@ -487,7 +543,7 @@ export default function RuleBuilder({
           "Each signal computes its own indicators from OHLCV via pandas-ta. Nest groups for complex AND/OR logic."}
       </p>
       <GroupEditor
-        group={group}
+        group={safe}
         catalog={catalog}
         onChange={onChange}
         allowRisk={allowRisk}
