@@ -45,10 +45,14 @@ async def _evaluate_rule(rule: AlertRule) -> dict:
     last_date = pd.Timestamp(data.index[-1]).strftime("%Y-%m-%d")
 
     side = None
-    if prev_signal == 0 and last_signal == 1 and "entry" in rule.notify_on:
-        side = "entry"
-    elif prev_signal == 1 and last_signal == 0 and "exit" in rule.notify_on:
-        side = "exit"
+    if prev_signal == 0 and last_signal != 0 and "entry" in rule.notify_on:
+        side = "long_entry" if last_signal == 1 else "short_entry"
+    elif prev_signal != 0 and last_signal == 0 and "exit" in rule.notify_on:
+        side = "long_exit" if prev_signal == 1 else "short_exit"
+    elif prev_signal != 0 and last_signal != 0 and prev_signal != last_signal:
+        # Flipped sides (both-direction strategies)
+        if "exit" in rule.notify_on or "entry" in rule.notify_on:
+            side = "flip_to_long" if last_signal == 1 else "flip_to_short"
 
     if side is None:
         return {

@@ -142,6 +142,24 @@ INDICATOR_CATALOG: list[dict] = [
         "outputs": [{"id": "ATR", "label": "ATR"}],
     },
     {
+        "id": "vwap",
+        "label": "VWAP — Session Volume Weighted Avg (daily reset)",
+        "category": "overlap",
+        "inputs": ["high", "low", "close", "volume"],
+        "params": [],
+        "outputs": [{"id": "VWAP", "label": "VWAP"}],
+    },
+    {
+        "id": "range_sma",
+        "label": "Bar Range SMA — SMA of (High−Low)",
+        "category": "volatility",
+        "inputs": ["high", "low"],
+        "params": [
+            {"name": "length", "type": "int", "default": 15, "min": 2, "max": 100, "step": 1},
+        ],
+        "outputs": [{"id": "RANGE_SMA", "label": "Range SMA"}],
+    },
+    {
         "id": "adx",
         "label": "ADX — Average Directional Index",
         "category": "trend",
@@ -177,6 +195,8 @@ PRICE_FIELDS = [
     {"id": "Low", "label": "Low"},
     {"id": "Close", "label": "Close"},
     {"id": "Volume", "label": "Volume"},
+    {"id": "HLC3", "label": "HLC3 ((H+L+C)/3)"},
+    {"id": "BarRange", "label": "Bar Range (High−Low)"},
 ]
 
 OPERATORS = [

@@ -34,6 +34,7 @@ export type StrategyInfo = {
     { type: string; default: number; min?: number; max?: number; step?: number }
   >;
   source?: "builtin" | "custom";
+  direction?: "long" | "short" | "both";
 };
 
 export type IndicatorParam = {
@@ -70,12 +71,18 @@ export type Operand = {
 };
 
 export type RuleNode = {
-  type: "condition" | "group";
+  type: "condition" | "group" | "risk";
   left?: Operand | null;
   operator?: string | null;
   right?: Operand | null;
+  right_scale?: number | null;
   logic?: "all" | "any" | null;
   children?: RuleNode[];
+  risk?: "stop_loss" | "take_profit" | "structure_atr" | null;
+  pct?: number | null;
+  atr_length?: number | null;
+  atr_mult?: number | null;
+  rr_ratio?: number | null;
 };
 
 export type StrategyConfig = {
@@ -85,8 +92,13 @@ export type StrategyConfig = {
   yahoo_ticker: string;
   interval: string;
   period: string;
-  action: "buy";
+  direction: "long" | "short" | "both";
+  trade_session: string;
+  close_session: string;
+  timezone: string;
+  one_trade_per_day: boolean;
   entry: RuleNode;
+  entry_short: RuleNode;
   exit: RuleNode;
 };
 
@@ -94,12 +106,25 @@ export type BacktestResult = {
   strategy_id: string;
   symbol: string;
   parameters: Record<string, number>;
+  direction: "long" | "short" | "both";
   initial_cash: number;
   final_equity: number;
   total_return_pct: number;
+  max_drawdown_pct: number;
+  buy_hold_return_pct: number;
   num_trades: number;
-  trades: { date: string; side: string; price: number; shares: number }[];
-  equity_curve: { date: string; equity: number }[];
+  trades: {
+    entry_date: string;
+    exit_date: string;
+    side: string;
+    exit_reason: string;
+    entry_price: number;
+    exit_price: number;
+    shares: number;
+    pnl: number;
+    pnl_pct: number;
+  }[];
+  equity_curve: { date: string; equity: number; buy_hold: number; price: number }[];
 };
 
 export type TuningResult = {

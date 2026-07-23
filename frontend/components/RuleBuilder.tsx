@@ -7,6 +7,9 @@ type Props = {
   group: RuleNode;
   catalog: IndicatorCatalog;
   onChange: (next: RuleNode) => void;
+  /** When true, allow Stop Loss / Take Profit exit rules. */
+  allowRisk?: boolean;
+  hint?: string;
 };
 
 function defaultParams(indicator: IndicatorInfo): Record<string, number> {
@@ -44,6 +47,24 @@ export function emptyCondition(catalog: IndicatorCatalog): RuleNode {
 
 export function emptyGroup(logic: "all" | "any" = "all"): RuleNode {
   return { type: "group", logic, children: [] };
+}
+
+export function emptyRisk(risk: "stop_loss" | "take_profit", pct = 2): RuleNode {
+  return { type: "risk", risk, pct };
+}
+
+export function emptyStructureAtr(
+  atrLength = 14,
+  atrMult = 1.1,
+  rrRatio = 2.3
+): RuleNode {
+  return {
+    type: "risk",
+    risk: "structure_atr",
+    atr_length: atrLength,
+    atr_mult: atrMult,
+    rr_ratio: rrRatio,
+  };
 }
 
 function OperandEditor({
@@ -157,6 +178,94 @@ function OperandEditor({
   );
 }
 
+function RiskRow({
+  node,
+  onChange,
+  onRemove,
+}: {
+  node: RuleNode;
+  onChange: (next: RuleNode) => void;
+  onRemove: () => void;
+}) {
+  const risk = node.risk || "stop_loss";
+  return (
+    <div className="rule-row">
+      <select
+        value={risk}
+        onChange={(e) => {
+          const next = e.target.value as "stop_loss" | "take_profit" | "structure_atr";
+          if (next === "structure_atr") {
+            onChange({
+              type: "risk",
+              risk: "structure_atr",
+              atr_length: node.atr_length ?? 14,
+              atr_mult: node.atr_mult ?? 1.1,
+              rr_ratio: node.rr_ratio ?? 2.3,
+            });
+          } else {
+            onChange({
+              type: "risk",
+              risk: next,
+              pct: node.pct ?? (next === "stop_loss" ? 2 : 4),
+            });
+          }
+        }}
+      >
+        <option value="stop_loss">Stop Loss %</option>
+        <option value="take_profit">Take Profit %</option>
+        <option value="structure_atr">Structure ATR + R:R</option>
+      </select>
+      {risk === "structure_atr" ? (
+        <>
+          <label className="param-inline">
+            <span>ATR</span>
+            <input
+              type="number"
+              min={2}
+              value={node.atr_length ?? 14}
+              onChange={(e) => onChange({ ...node, atr_length: Number(e.target.value) })}
+            />
+          </label>
+          <label className="param-inline">
+            <span>×ATR</span>
+            <input
+              type="number"
+              min={0.1}
+              step={0.1}
+              value={node.atr_mult ?? 1.1}
+              onChange={(e) => onChange({ ...node, atr_mult: Number(e.target.value) })}
+            />
+          </label>
+          <label className="param-inline">
+            <span>R:R</span>
+            <input
+              type="number"
+              min={0.5}
+              step={0.1}
+              value={node.rr_ratio ?? 2.3}
+              onChange={(e) => onChange({ ...node, rr_ratio: Number(e.target.value) })}
+            />
+          </label>
+        </>
+      ) : (
+        <label className="param-inline">
+          <span>%</span>
+          <input
+            type="number"
+            min={0.1}
+            step={0.1}
+            value={node.pct ?? 2}
+            onChange={(e) => onChange({ ...node, pct: Number(e.target.value) })}
+          />
+        </label>
+      )}
+      <button type="button" className="icon-btn" onClick={onRemove} aria-label="Remove">
+        ×
+      </button>
+    </div>
+  );
+}
+
 function ConditionRow({
   node,
   catalog,
@@ -191,6 +300,16 @@ function ConditionRow({
         catalog={catalog}
         onChange={(right) => onChange({ ...node, right })}
       />
+      <label className="param-inline" title="Multiply right side before compare (e.g. 1.1)">
+        <span>× scale</span>
+        <input
+          type="number"
+          min={0}
+          step={0.1}
+          value={node.right_scale ?? 1}
+          onChange={(e) => onChange({ ...node, right_scale: Number(e.target.value) })}
+        />
+      </label>
       <button type="button" className="icon-btn" onClick={onRemove} aria-label="Remove">
         ×
       </button>
@@ -203,11 +322,13 @@ function GroupEditor({
   catalog,
   onChange,
   nested = false,
+  allowRisk = false,
 }: {
   group: RuleNode;
   catalog: IndicatorCatalog;
   onChange: (next: RuleNode) => void;
   nested?: boolean;
+  allowRisk?: boolean;
 }) {
   const children = group.children || [];
 
@@ -246,6 +367,46 @@ function GroupEditor({
           >
             + Add Signal
           </button>
+          {allowRisk && (
+            <>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() =>
+                  onChange({
+                    ...group,
+                    children: [...children, emptyRisk("stop_loss", 2)],
+                  })
+                }
+              >
+                + Stop Loss
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() =>
+                  onChange({
+                    ...group,
+                    children: [...children, emptyRisk("take_profit", 4)],
+                  })
+                }
+              >
+                + Take Profit
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() =>
+                  onChange({
+                    ...group,
+                    children: [...children, emptyStructureAtr()],
+                  })
+                }
+              >
+                + ATR / R:R
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="secondary"
@@ -284,9 +445,17 @@ function GroupEditor({
                 group={child}
                 catalog={catalog}
                 nested
+                allowRisk={allowRisk}
                 onChange={(next) => updateChild(index, next)}
               />
             </div>
+          ) : child.type === "risk" ? (
+            <RiskRow
+              key={index}
+              node={child}
+              onChange={(next) => updateChild(index, next)}
+              onRemove={() => removeChild(index)}
+            />
           ) : (
             <ConditionRow
               key={index}
@@ -302,15 +471,27 @@ function GroupEditor({
   );
 }
 
-export default function RuleBuilder({ title, group, catalog, onChange }: Props) {
+export default function RuleBuilder({
+  title,
+  group,
+  catalog,
+  onChange,
+  allowRisk = false,
+  hint,
+}: Props) {
   return (
     <section className="panel stack">
       <h2>{title}</h2>
       <p className="muted">
-        Each signal computes its own indicators from OHLCV via pandas-ta. Nest groups for
-        complex AND/OR logic.
+        {hint ||
+          "Each signal computes its own indicators from OHLCV via pandas-ta. Nest groups for complex AND/OR logic."}
       </p>
-      <GroupEditor group={group} catalog={catalog} onChange={onChange} />
+      <GroupEditor
+        group={group}
+        catalog={catalog}
+        onChange={onChange}
+        allowRisk={allowRisk}
+      />
     </section>
   );
 }

@@ -54,6 +54,7 @@ def get_strategies():
                 description=s.description,
                 parameters=s.parameters,
                 source="builtin",
+                direction=getattr(s, "direction", "long"),
             )
         )
     for config in storage.list_strategy_configs():
@@ -61,9 +62,10 @@ def get_strategies():
             StrategyInfo(
                 id=config.id or "",
                 name=config.name,
-                description=f"Custom · {config.yahoo_ticker} · {config.interval}",
+                description=f"Custom · {config.direction} · {config.yahoo_ticker} · {config.interval}",
                 parameters={},
                 source="custom",
+                direction=config.direction,
             )
         )
     return items
@@ -117,6 +119,7 @@ def get_strategy_detail(strategy_id: str):
         description=s.description,
         parameters=s.parameters,
         source=source,
+        direction=getattr(s, "direction", "long"),
     )
 
 
@@ -147,6 +150,12 @@ def backtest(request: BacktestRequest):
             parameters=request.parameters,
             initial_cash=request.initial_cash,
             symbol=symbol,
+            interval=interval,
+            position_size_pct=request.position_size_pct,
+            commission_pct=request.commission_pct,
+            risk_percent=request.risk_percent,
+            slippage=request.slippage,
+            fill_on=request.fill_on,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

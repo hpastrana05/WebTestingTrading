@@ -3,11 +3,12 @@ from app.strategies.base import Strategy
 from app.strategies.config_strategy import ConfigStrategy
 from app.strategies.rsi import RsiStrategy
 from app.strategies.sma_crossover import SmaCrossover
+from app.strategies.vwap_momentum import VwapMomentum
 
 # Built-in Python strategies
 _BUILTINS: dict[str, Strategy] = {
     strategy.id: strategy
-    for strategy in (SmaCrossover(), RsiStrategy())
+    for strategy in (SmaCrossover(), RsiStrategy(), VwapMomentum())
 }
 
 

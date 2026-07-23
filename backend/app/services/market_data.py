@@ -52,6 +52,3 @@ def fetch_ohlcv(symbol: str, period: str = "1y", interval: str = "1d") -> pd.Dat
         raise ValueError(f"Missing columns for '{symbol}': {missing}")
 
     return data[columns].dropna(how="all")
-
-
-print(fetch_ohlcv("AAPL", period="1mo", interval="1d").head())

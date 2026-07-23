@@ -2,12 +2,21 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { api, StrategyInfo, TuningResult } from "@/lib/api";
+import { DATA_INTERVALS } from "@/lib/intervals";
+import { DATA_PERIODS } from "@/lib/periods";
 
 export default function TuningPage() {
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [strategyId, setStrategyId] = useState("");
   const [symbol, setSymbol] = useState("AAPL");
   const [period, setPeriod] = useState("1y");
+  const [interval, setInterval] = useState("1d");
+  const [initialCash, setInitialCash] = useState(10000);
+  const [positionSizePct, setPositionSizePct] = useState(100);
+  const [commissionPct, setCommissionPct] = useState(0.001);
+  const [riskPercent, setRiskPercent] = useState(2);
+  const [slippage, setSlippage] = useState(0);
+  const [fillOn, setFillOn] = useState<"next_open" | "close">("next_open");
   const [gridText, setGridText] = useState('{\n  "fast": [5, 10, 15],\n  "slow": [20, 30, 40]\n}');
   const [result, setResult] = useState<TuningResult | null>(null);
   const [error, setError] = useState("");
@@ -25,6 +34,16 @@ export default function TuningPage() {
       setGridText('{\n  "period": [10, 14],\n  "oversold": [25, 30],\n  "overbought": [70, 75]\n}');
     } else if (strategyId === "sma_crossover") {
       setGridText('{\n  "fast": [5, 10, 15],\n  "slow": [20, 30, 40]\n}');
+    } else if (strategyId === "vwap_momentum") {
+      setGridText(
+        '{\n  "ema_length": [20],\n  "atr_length": [14],\n  "atr_mult": [1.0, 1.1, 1.2],\n  "rr_ratio": [2.0, 2.3, 2.5],\n  "impulse_lookback": [15],\n  "impulse_mult": [1.1]\n}'
+      );
+      setInterval("5m");
+      setPeriod("5d");
+      setSymbol("QQQ");
+      setCommissionPct(0.001);
+      setRiskPercent(2);
+      setFillOn("next_open");
     }
   }, [strategyId]);
 
@@ -39,6 +58,13 @@ export default function TuningPage() {
         strategy_id: strategyId,
         symbol,
         period,
+        interval,
+        initial_cash: initialCash,
+        position_size_pct: positionSizePct,
+        commission_pct: commissionPct,
+        risk_percent: riskPercent,
+        slippage,
+        fill_on: fillOn,
         param_grid,
       });
       setResult(data);
@@ -53,7 +79,10 @@ export default function TuningPage() {
     <div className="stack">
       <div>
         <h1>Parameter tuning</h1>
-        <p className="muted">Simple grid search over strategy parameters.</p>
+        <p className="muted">
+          Grid search over strategy parameters using the same market and cost settings as
+          backtest.
+        </p>
       </div>
 
       <form className="panel stack" onSubmit={onSubmit}>
@@ -75,11 +104,87 @@ export default function TuningPage() {
           <label>
             Period
             <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-              {["6mo", "1y", "2y"].map((p) => (
-                <option key={p} value={p}>
-                  {p}
+              {DATA_PERIODS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            Interval
+            <select value={interval} onChange={(e) => setInterval(e.target.value)}>
+              {DATA_INTERVALS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="row">
+          <label>
+            Initial cash
+            <input
+              type="number"
+              value={initialCash}
+              onChange={(e) => setInitialCash(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            Risk % / trade
+            <input
+              type="number"
+              min={0}
+              step={0.5}
+              value={riskPercent}
+              onChange={(e) => setRiskPercent(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            Position size %
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={positionSizePct}
+              onChange={(e) => setPositionSizePct(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            Commission % / trade
+            <input
+              type="number"
+              min={0}
+              step={0.001}
+              value={commissionPct}
+              onChange={(e) => setCommissionPct(Number(e.target.value))}
+              title="Enter percent points: 0.001 = 0.001%, 10 = 10%"
+              placeholder="0.001"
+            />
+          </label>
+        </div>
+
+        <div className="row">
+          <label>
+            Slippage (price)
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={slippage}
+              onChange={(e) => setSlippage(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            Fill orders on
+            <select
+              value={fillOn}
+              onChange={(e) => setFillOn(e.target.value as "next_open" | "close")}
+            >
+              <option value="next_open">Next bar open (TV default)</option>
+              <option value="close">Signal bar close</option>
             </select>
           </label>
         </div>

@@ -59,7 +59,7 @@ export default function StrategiesPage() {
                   {strategy.broker_ticker ? ` · ${strategy.broker_ticker}` : ""}
                 </p>
                 <p className="muted" style={{ marginTop: 10 }}>
-                  {strategy.interval} · {strategy.period} · long-only
+                  {strategy.interval} · {strategy.period} · {strategy.direction}
                 </p>
                 <div className="row" style={{ marginTop: 14 }}>
                   <Link href={`/strategies/${strategy.id}`} className="button-link">

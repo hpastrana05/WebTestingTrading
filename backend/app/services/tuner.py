@@ -30,6 +30,12 @@ def run_tuning(request: TuningRequest) -> TuningResult:
                 parameters=full_params,
                 initial_cash=request.initial_cash,
                 symbol=request.symbol,
+                interval=request.interval,
+                position_size_pct=request.position_size_pct,
+                commission_pct=request.commission_pct,
+                risk_percent=request.risk_percent,
+                slippage=request.slippage,
+                fill_on=request.fill_on,
             )
         except ValueError:
             # Skip invalid combinations (e.g. fast >= slow)

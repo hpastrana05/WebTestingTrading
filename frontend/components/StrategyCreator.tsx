@@ -3,17 +3,97 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import RuleBuilder, { emptyGroup } from "@/components/RuleBuilder";
+import RuleBuilder, { emptyGroup, emptyStructureAtr } from "@/components/RuleBuilder";
 import {
   api,
   IndicatorCatalog,
   RuleNode,
   StrategyConfig,
 } from "@/lib/api";
+import { DATA_INTERVALS } from "@/lib/intervals";
+import { DATA_PERIODS } from "@/lib/periods";
 
 type Props = {
   strategyId?: string;
 };
+
+function cond(
+  left: RuleNode["left"],
+  operator: string,
+  right: RuleNode["right"],
+  right_scale = 1
+): RuleNode {
+  return { type: "condition", left, operator, right, right_scale };
+}
+
+/** Closest Strategy Creator recreation of the Pine VWAP Momentum Pro script. */
+function vwapMomentumTemplate(): Omit<StrategyConfig, "id"> {
+  const longEntry: RuleNode = {
+    type: "group",
+    logic: "all",
+    children: [
+      cond(
+        { kind: "price", field: "Close" },
+        "cross_above",
+        { kind: "indicator", indicator: "vwap", params: {}, output: "VWAP" }
+      ),
+      cond(
+        { kind: "price", field: "Close" },
+        ">",
+        { kind: "indicator", indicator: "ema", params: { length: 20 }, output: "EMA" }
+      ),
+      cond(
+        { kind: "price", field: "BarRange" },
+        ">",
+        { kind: "indicator", indicator: "range_sma", params: { length: 15 }, output: "RANGE_SMA" },
+        1.1
+      ),
+    ],
+  };
+
+  const shortEntry: RuleNode = {
+    type: "group",
+    logic: "all",
+    children: [
+      cond(
+        { kind: "price", field: "Close" },
+        "cross_below",
+        { kind: "indicator", indicator: "vwap", params: {}, output: "VWAP" }
+      ),
+      cond(
+        { kind: "price", field: "Close" },
+        "<",
+        { kind: "indicator", indicator: "ema", params: { length: 20 }, output: "EMA" }
+      ),
+      cond(
+        { kind: "price", field: "BarRange" },
+        ">",
+        { kind: "indicator", indicator: "range_sma", params: { length: 15 }, output: "RANGE_SMA" },
+        1.1
+      ),
+    ],
+  };
+
+  return {
+    name: "VWAP Momentum Pro (Creator)",
+    broker_ticker: "",
+    yahoo_ticker: "QQQ",
+    interval: "5m",
+    period: "5d",
+    direction: "both",
+    trade_session: "1545-1930",
+    close_session: "2150-2200",
+    timezone: "Europe/Madrid",
+    one_trade_per_day: true,
+    entry: longEntry,
+    entry_short: shortEntry,
+    exit: {
+      type: "group",
+      logic: "any",
+      children: [emptyStructureAtr(14, 1.1, 2.3)],
+    },
+  };
+}
 
 const defaultConfig = (): Omit<StrategyConfig, "id"> => ({
   name: "",
@@ -21,8 +101,13 @@ const defaultConfig = (): Omit<StrategyConfig, "id"> => ({
   yahoo_ticker: "AAPL",
   interval: "1d",
   period: "1y",
-  action: "buy",
+  direction: "long",
+  trade_session: "",
+  close_session: "",
+  timezone: "Europe/Madrid",
+  one_trade_per_day: false,
   entry: emptyGroup("all"),
+  entry_short: emptyGroup("all"),
   exit: emptyGroup("any"),
 });
 
@@ -52,8 +137,13 @@ export default function StrategyCreator({ strategyId }: Props) {
           yahoo_ticker: saved.yahoo_ticker,
           interval: saved.interval,
           period: saved.period,
-          action: saved.action,
+          direction: saved.direction || "long",
+          trade_session: saved.trade_session || "",
+          close_session: saved.close_session || "",
+          timezone: saved.timezone || "Europe/Madrid",
+          one_trade_per_day: Boolean(saved.one_trade_per_day),
           entry: saved.entry,
+          entry_short: saved.entry_short || emptyGroup("all"),
           exit: saved.exit,
         });
       })
@@ -62,6 +152,10 @@ export default function StrategyCreator({ strategyId }: Props) {
 
   function setEntry(entry: RuleNode) {
     setConfig((prev) => ({ ...prev, entry }));
+  }
+
+  function setEntryShort(entry_short: RuleNode) {
+    setConfig((prev) => ({ ...prev, entry_short }));
   }
 
   function setExit(exit: RuleNode) {
@@ -78,10 +172,20 @@ export default function StrategyCreator({ strategyId }: Props) {
         throw new Error("Strategy name is required");
       }
       if (!(config.entry.children && config.entry.children.length)) {
-        throw new Error("Add at least one entry signal");
+        throw new Error(
+          config.direction === "both"
+            ? "Add at least one Long entry signal"
+            : "Add at least one entry signal"
+        );
+      }
+      if (
+        config.direction === "both" &&
+        !(config.entry_short.children && config.entry_short.children.length)
+      ) {
+        throw new Error("Add at least one Short entry signal");
       }
       if (!(config.exit.children && config.exit.children.length)) {
-        throw new Error("Add at least one exit signal");
+        throw new Error("Add at least one exit signal (or TP/SL / ATR R:R)");
       }
 
       if (strategyId) {
@@ -108,19 +212,39 @@ export default function StrategyCreator({ strategyId }: Props) {
     );
   }
 
+  const entryTitle =
+    config.direction === "both"
+      ? "Long Entry"
+      : config.direction === "short"
+        ? "Short Entry"
+        : "Long Entry";
+
   return (
     <form className="stack creator" onSubmit={onSave}>
       <div className="creator-head">
         <div>
           <h1>Strategy Creator</h1>
           <p className="muted">
-            Configure entry/exit signal logic. Indicators come from{" "}
-            <code>pandas-ta</code>.
+            Build entry/exit rules with sessions, impulse (× scale), VWAP, and ATR/R:R exits.
           </p>
         </div>
-        <Link className="secondary-link" href="/strategies">
-          ← Back to strategies
-        </Link>
+        <div className="row" style={{ flex: "0 0 auto" }}>
+          {!strategyId && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setConfig(vwapMomentumTemplate());
+                setStatus("Loaded VWAP Momentum Pro template — review and save.");
+              }}
+            >
+              Load VWAP Momentum template
+            </button>
+          )}
+          <Link className="secondary-link" href="/strategies">
+            ← Back to strategies
+          </Link>
+        </div>
       </div>
 
       <section className="panel stack">
@@ -150,7 +274,7 @@ export default function StrategyCreator({ strategyId }: Props) {
               onChange={(e) =>
                 setConfig({ ...config, yahoo_ticker: e.target.value.toUpperCase() })
               }
-              placeholder="AAPL"
+              placeholder="QQQ"
               required
             />
           </label>
@@ -162,10 +286,11 @@ export default function StrategyCreator({ strategyId }: Props) {
               value={config.interval}
               onChange={(e) => setConfig({ ...config, interval: e.target.value })}
             >
-              <option value="1d">1 Day</option>
-              <option value="1h">1 Hour</option>
-              <option value="15m">15 Minutes</option>
-              <option value="5m">5 Minutes</option>
+              {DATA_INTERVALS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -174,34 +299,96 @@ export default function StrategyCreator({ strategyId }: Props) {
               value={config.period}
               onChange={(e) => setConfig({ ...config, period: e.target.value })}
             >
-              <option value="3mo">3 Months</option>
-              <option value="6mo">6 Months</option>
-              <option value="1y">1 Year</option>
-              <option value="2y">2 Years</option>
-              <option value="5y">5 Years</option>
+              {DATA_PERIODS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
             </select>
           </label>
           <label>
-            Execution Action
-            <select value={config.action} disabled>
-              <option value="buy">BUY (Long-only)</option>
+            Direction
+            <select
+              value={config.direction}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  direction: e.target.value as "long" | "short" | "both",
+                })
+              }
+            >
+              <option value="long">Long</option>
+              <option value="short">Short</option>
+              <option value="both">Both</option>
             </select>
           </label>
         </div>
+        <div className="row">
+          <label>
+            Trade session
+            <input
+              value={config.trade_session}
+              onChange={(e) => setConfig({ ...config, trade_session: e.target.value })}
+              placeholder="1545-1930 (empty = always)"
+            />
+          </label>
+          <label>
+            Forced close session
+            <input
+              value={config.close_session}
+              onChange={(e) => setConfig({ ...config, close_session: e.target.value })}
+              placeholder="2150-2200"
+            />
+          </label>
+          <label>
+            Timezone
+            <input
+              value={config.timezone}
+              onChange={(e) => setConfig({ ...config, timezone: e.target.value })}
+              placeholder="Europe/Madrid"
+            />
+          </label>
+          <label className="checkbox-label">
+            One trade / day
+            <input
+              type="checkbox"
+              checked={config.one_trade_per_day}
+              onChange={(e) =>
+                setConfig({ ...config, one_trade_per_day: e.target.checked })
+              }
+            />
+          </label>
+        </div>
+        {config.direction === "both" && (
+          <p className="muted">
+            Both requires separate Long and Short entry rules. Shared exit rules (including
+            ATR/R:R) close whichever side is open.
+          </p>
+        )}
       </section>
 
       <div className="creator-grid">
         <RuleBuilder
-          title="Entry Signal Rule"
+          title={entryTitle}
           group={config.entry}
           catalog={catalog}
           onChange={setEntry}
         />
+        {config.direction === "both" && (
+          <RuleBuilder
+            title="Short Entry"
+            group={config.entry_short}
+            catalog={catalog}
+            onChange={setEntryShort}
+          />
+        )}
         <RuleBuilder
-          title="Exit Signal Rule"
+          title="Exit Rules"
           group={config.exit}
           catalog={catalog}
           onChange={setExit}
+          allowRisk
+          hint="Use % stop/target, or Structure ATR + R:R (SL = max(bar distance, ATR×mult), TP = SL×R:R)."
         />
       </div>
 
