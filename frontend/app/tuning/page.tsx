@@ -179,6 +179,19 @@ export default function TuningPage() {
       setFillOn("next_open");
       return;
     }
+    if (strategyId === "oro_swing_adaptive") {
+      setGridText(
+        '{\n  "ema_fast": [50],\n  "ema_slow": [200],\n  "rsi_period": [14],\n  "atr_length": [20],\n  "rr_ratio": [2.5, 3.0, 3.5],\n  "atr_mult_normal": [2.3, 2.5, 2.7],\n  "atr_mult_strict": [3.0],\n  "loss_streak": [2],\n  "rsi_long_normal": [45],\n  "rsi_long_strict": [50],\n  "rsi_short_normal": [55],\n  "rsi_short_strict": [50]\n}'
+      );
+      setInterval("1d");
+      setPeriod("2y");
+      setSymbol("GC=F");
+      setCommissionPct(0.002);
+      setRiskPercent(2);
+      setSlippage(2);
+      setFillOn("next_open");
+      return;
+    }
 
     // Custom / hand-made strategies: load market defaults + auto grid from rule params
     if (selected.source === "custom") {
