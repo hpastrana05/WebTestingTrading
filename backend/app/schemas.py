@@ -231,6 +231,10 @@ class AlertRule(BaseModel):
     name: str
     strategy_id: str
     symbol: str
+    # Candle timeframe for signal evaluation (Yahoo interval)
+    interval: str = "1d"
+    # Lookback window for market data fetch
+    period: str = "3mo"
     parameters: dict = Field(default_factory=dict)
     enabled: bool = True
     notify_on: list[str] = Field(default_factory=lambda: ["entry", "exit"])
@@ -240,6 +244,8 @@ class AlertRuleUpdate(BaseModel):
     name: str | None = None
     strategy_id: str | None = None
     symbol: str | None = None
+    interval: str | None = None
+    period: str | None = None
     parameters: dict | None = None
     enabled: bool | None = None
     notify_on: list[str] | None = None

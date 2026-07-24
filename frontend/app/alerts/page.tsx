@@ -2,14 +2,59 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { AlertRule, api, StrategyInfo } from "@/lib/api";
+import { DATA_INTERVALS } from "@/lib/intervals";
+
+function defaultPeriodForInterval(interval: string): string {
+  if (interval === "1m" || interval === "2m") return "5d";
+  if (["5m", "15m", "30m"].includes(interval)) return "1mo";
+  if (["60m", "90m", "1h"].includes(interval)) return "3mo";
+  if (["5d", "1wk", "1mo", "3mo"].includes(interval)) return "2y";
+  return "3mo";
+}
+
+function strategyLabel(s: StrategyInfo): string {
+  if (s.source === "generated" || s.id.startsWith("gen_")) {
+    return s.name.startsWith("[Python]") ? s.name : `[Python] ${s.name}`;
+  }
+  if (s.source === "custom") return `★ ${s.name}`;
+  return s.name;
+}
+
+/** Preview of the Telegram message shape (matches backend formatter). */
+function previewMessage(opts: {
+  alertType: string;
+  side: string;
+  symbol: string;
+  interval: string;
+  strategyId: string;
+  ruleName: string;
+}): string {
+  const strategy =
+    opts.strategyId || "vwap_momentum";
+  return [
+    `[${opts.alertType}] ${opts.symbol || "QQQ"} · ${opts.interval} · ${opts.side}`,
+    "",
+    `Estrategia: ${strategy}`,
+    `Regla: ${opts.ruleName || "Mi alerta"}`,
+    "Precio: 478.1200",
+    opts.alertType === "ENTRADA" ? "Entrada: 478.1200" : "Entrada: 476.5000",
+    opts.alertType === "ENTRADA" ? "Salida: —" : "Salida: 478.1200",
+    "SL: 475.5000",
+    "TP: 484.2000",
+    opts.alertType === "ENTRADA" ? "Motivo: Señal de entrada" : "Motivo: Take profit (TP)",
+    opts.alertType === "ENTRADA" ? "Estado: ABIERTA" : "Estado: CERRADA",
+    "Hora: 2026-07-24 15:45",
+  ].join("\n");
+}
 
 export default function AlertsPage() {
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [message, setMessage] = useState("Test alert from Trading Lab");
-  const [name, setName] = useState("AAPL SMA entries");
+  const [name, setName] = useState("QQQ VWAP 5m");
   const [strategyId, setStrategyId] = useState("");
-  const [symbol, setSymbol] = useState("AAPL");
+  const [symbol, setSymbol] = useState("QQQ");
+  const [interval, setInterval] = useState("5m");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,11 +97,13 @@ export default function AlertsPage() {
         name,
         strategy_id: strategyId,
         symbol,
+        interval,
+        period: defaultPeriodForInterval(interval),
         parameters: {},
         enabled: true,
         notify_on: ["entry", "exit"],
       });
-      setStatus("Alert rule saved.");
+      setStatus(`Alert rule saved (${interval}).`);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save rule");
@@ -74,18 +121,46 @@ export default function AlertsPage() {
     setStatus("");
     try {
       const body = await api.checkAlerts();
-      setStatus(`Checked ${body.results?.length ?? 0} rule(s).`);
+      const results = body.results || [];
+      const fired = results.filter(
+        (r: { event?: string }) => r.event && !["none", "insufficient_data"].includes(r.event)
+      );
+      setStatus(
+        `Checked ${results.length} rule(s)` +
+          (fired.length ? ` · ${fired.length} alert(s) sent` : " · no new signals")
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Check failed");
     }
   }
+
+  const previewEntry = previewMessage({
+    alertType: "ENTRADA",
+    side: "LONG",
+    symbol,
+    interval,
+    strategyId,
+    ruleName: name,
+  });
+  const previewExit = previewMessage({
+    alertType: "SALIDA",
+    side: "LONG",
+    symbol,
+    interval,
+    strategyId,
+    ruleName: name,
+  });
 
   return (
     <div className="stack">
       <div>
         <h1>Alerts</h1>
         <p className="muted">
-          Send Telegram messages and keep simple alert rules for later automation.
+          Rules watch the latest candle on your chosen interval. Run{" "}
+          <strong>Check rules now</strong> (or cron, or Telegram <code>/check</code>) often enough
+          for fast setups — e.g. every minute for 5m charts. Bot commands:{" "}
+          <code>/help</code>, <code>/list</code>, <code>/state</code>, <code>/enable</code>,{" "}
+          <code>/disable</code>.
         </p>
       </div>
 
@@ -112,7 +187,7 @@ export default function AlertsPage() {
             <select value={strategyId} onChange={(e) => setStrategyId(e.target.value)}>
               {strategies.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name}
+                  {strategyLabel(s)}
                 </option>
               ))}
             </select>
@@ -121,9 +196,35 @@ export default function AlertsPage() {
             Symbol
             <input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} />
           </label>
+          <label>
+            Candle interval
+            <select value={interval} onChange={(e) => setInterval(e.target.value)}>
+              {DATA_INTERVALS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <button type="submit">Save rule</button>
       </form>
+
+      <section className="panel stack">
+        <h2>Message preview</h2>
+        <p className="muted">
+          Formato de Telegram para <strong>entrada</strong> y <strong>salida</strong> (las dos
+          se envían cuando hay señal).
+        </p>
+        <div className="row" style={{ alignItems: "stretch" }}>
+          <pre className="alert-preview" style={{ flex: 1 }}>
+            {previewEntry}
+          </pre>
+          <pre className="alert-preview" style={{ flex: 1 }}>
+            {previewExit}
+          </pre>
+        </div>
+      </section>
 
       {status && <div className="success">{status}</div>}
       {error && <div className="error">{error}</div>}
@@ -143,6 +244,7 @@ export default function AlertsPage() {
                   <th>Name</th>
                   <th>Strategy</th>
                   <th>Symbol</th>
+                  <th>Interval</th>
                   <th>Enabled</th>
                   <th></th>
                 </tr>
@@ -153,6 +255,7 @@ export default function AlertsPage() {
                     <td>{rule.name}</td>
                     <td>{rule.strategy_id}</td>
                     <td>{rule.symbol}</td>
+                    <td>{rule.interval || "1d"}</td>
                     <td>{rule.enabled ? "yes" : "no"}</td>
                     <td>
                       <button

@@ -29,6 +29,13 @@ def list_alert_rules() -> list[AlertRule]:
     return [AlertRule(**rule) for rule in _read_json("alert_rules.json")]
 
 
+def get_alert_rule(rule_id: str) -> AlertRule:
+    for rule in list_alert_rules():
+        if rule.id == rule_id:
+            return rule
+    raise KeyError(f"Alert rule not found: {rule_id}")
+
+
 def create_alert_rule(rule: AlertRule) -> AlertRule:
     rules = _read_json("alert_rules.json")
     stored = rule.model_dump()

@@ -148,6 +148,8 @@ export type AlertRule = {
   name: string;
   strategy_id: string;
   symbol: string;
+  interval: string;
+  period: string;
   parameters: Record<string, number>;
   enabled: boolean;
   notify_on: string[];

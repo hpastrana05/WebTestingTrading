@@ -102,13 +102,28 @@ TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 ```
 
-From the Alerts page you can send a test message. Saved rules can be evaluated with:
+When the backend starts it runs the bot with long-polling. Only your `TELEGRAM_CHAT_ID` can use commands:
+
+| Command | What it does |
+|---------|----------------|
+| `/help` | Lista de comandos |
+| `/ping` | Comprueba que el bot responde |
+| `/list` | Alertas configuradas |
+| `/show <n\|id>` | Detalle de una alerta |
+| `/state [n\|id]` | Estado actual (todas o una) |
+| `/check` | Evalúa reglas ahora (envía ENTRADA/SALIDA si hay señal) |
+| `/enable <n\|id>` | Activa una alerta |
+| `/disable <n\|id>` | Desactiva una alerta |
+
+Usa el número de `/list` (1, 2, …) o el id/prefijo. Ejemplo: `/state 1`.
+
+From the Alerts page you can send a test message. Saved rules can also be evaluated with:
 
 ```bash
 curl -X POST http://localhost:8000/api/alerts/check
 ```
 
-Schedule that endpoint with cron on the Pi if you want periodic checks, for example every weekday at market close.
+Schedule that endpoint with cron on the Pi if you want periodic checks (or use `/check` from Telegram).
 
 ## Adding a strategy
 
