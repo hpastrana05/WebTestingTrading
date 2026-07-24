@@ -219,7 +219,10 @@ export const api = {
       body: JSON.stringify({ message }),
     }),
   checkAlerts: () =>
-    request<{ results: unknown[] }>("/api/alerts/check", { method: "POST" }),
+    request<{ results: Array<{ event?: string; ok?: boolean; detail?: string }> }>(
+      "/api/alerts/check",
+      { method: "POST" }
+    ),
   getAlertRules: () => request<AlertRule[]>("/api/alerts/rules"),
   createAlertRule: (rule: AlertRule) =>
     request<AlertRule>("/api/alerts/rules", {

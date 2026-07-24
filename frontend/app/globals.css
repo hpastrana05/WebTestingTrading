@@ -273,7 +273,7 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  align-items: end;
+  align-items: flex-end;
 }
 
 label {
@@ -650,7 +650,7 @@ th {
   flex-wrap: wrap;
   gap: 12px;
   justify-content: space-between;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .rule-row {

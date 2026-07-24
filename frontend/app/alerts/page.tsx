@@ -123,7 +123,7 @@ export default function AlertsPage() {
       const body = await api.checkAlerts();
       const results = body.results || [];
       const fired = results.filter(
-        (r: { event?: string }) => r.event && !["none", "insufficient_data"].includes(r.event)
+        (r) => Boolean(r.event) && !["none", "insufficient_data"].includes(r.event!)
       );
       setStatus(
         `Checked ${results.length} rule(s)` +
