@@ -117,13 +117,15 @@ When the backend starts it runs the bot with long-polling. Only your `TELEGRAM_C
 
 Usa el número de `/list` (1, 2, …) o el id/prefijo. Ejemplo: `/state 1`.
 
-From the Alerts page you can send a test message. Saved rules can also be evaluated with:
+The backend also **checks alert rules automatically** every
+`ALERT_CHECK_INTERVAL_SECONDS` (default **60**). Set it to `0` to disable.
+Duplicates of the same candle transition are suppressed so you are not spammed.
+
+You can still force a check from the Alerts page, Telegram `/check`, or:
 
 ```bash
 curl -X POST http://localhost:8000/api/alerts/check
 ```
-
-Schedule that endpoint with cron on the Pi if you want periodic checks (or use `/check` from Telegram).
 
 ## Adding a strategy
 

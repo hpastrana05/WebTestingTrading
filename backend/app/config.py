@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     data_dir: str = "data"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    # Background alert evaluation interval (seconds). 0 = disabled.
+    alert_check_interval_seconds: int = 60
 
 
 settings = Settings()

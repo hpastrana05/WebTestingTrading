@@ -123,7 +123,9 @@ export default function AlertsPage() {
       const body = await api.checkAlerts();
       const results = body.results || [];
       const fired = results.filter(
-        (r) => Boolean(r.event) && !["none", "insufficient_data"].includes(r.event!)
+        (r) =>
+          Boolean(r.event) &&
+          !["none", "insufficient_data", "already_sent"].includes(r.event!)
       );
       setStatus(
         `Checked ${results.length} rule(s)` +
@@ -156,9 +158,9 @@ export default function AlertsPage() {
       <div>
         <h1>Alerts</h1>
         <p className="muted">
-          Rules watch the latest candle on your chosen interval. Run{" "}
-          <strong>Check rules now</strong> (or cron, or Telegram <code>/check</code>) often enough
-          for fast setups — e.g. every minute for 5m charts. Bot commands:{" "}
+          Rules are checked automatically every minute by the backend (configurable via{" "}
+          <code>ALERT_CHECK_INTERVAL_SECONDS</code>). You can also run{" "}
+          <strong>Check rules now</strong> or Telegram <code>/check</code>. Bot commands:{" "}
           <code>/help</code>, <code>/list</code>, <code>/state</code>, <code>/enable</code>,{" "}
           <code>/disable</code>.
         </p>

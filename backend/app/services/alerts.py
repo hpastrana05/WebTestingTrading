@@ -257,6 +257,23 @@ async def _evaluate_rule(rule: AlertRule) -> dict:
             "period": period,
         }
 
+    # Dedupe: same bar + same transition must not spam on every poll
+    bar_key = str(data.index[-1])
+    fingerprint = f"{bar_key}|{prev_signal}->{last_signal}|{','.join(events)}"
+    if rule.id:
+        known = storage.get_alert_notify_fingerprints().get(rule.id)
+        if known == fingerprint:
+            return {
+                "rule_id": rule.id,
+                "ok": True,
+                "event": "already_sent",
+                "events": events,
+                "signal": last_signal,
+                "date": last_date,
+                "interval": interval,
+                "period": period,
+            }
+
     frame = _safe_signal_frame(strategy, data, params)
     ctx = _build_trade_context(
         data=data,
@@ -289,6 +306,9 @@ async def _evaluate_rule(rule: AlertRule) -> dict:
         telegrams.append({"event": event, **send_result})
 
     ok = all(bool(t.get("ok")) for t in telegrams)
+    if ok and rule.id:
+        storage.set_alert_notify_fingerprint(rule.id, fingerprint)
+
     return {
         "rule_id": rule.id,
         "ok": ok,

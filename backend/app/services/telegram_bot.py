@@ -287,6 +287,8 @@ async def cmd_check(update, context) -> None:
         event = row.get("event")
         if event in (None, "none"):
             lines.append(f"· {rid}: sin cambio (signal={row.get('signal')})")
+        elif event == "already_sent":
+            lines.append(f"· {rid}: ya notificado (misma transición)")
         elif event == "insufficient_data":
             lines.append(f"· {rid}: datos insuficientes")
         else:

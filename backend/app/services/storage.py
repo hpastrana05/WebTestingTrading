@@ -62,6 +62,36 @@ def delete_alert_rule(rule_id: str) -> None:
     if len(filtered) == len(rules):
         raise KeyError(f"Alert rule not found: {rule_id}")
     _write_json("alert_rules.json", filtered)
+    clear_alert_notify_state(rule_id)
+
+
+# --- Alert notify dedupe (avoid re-sending the same bar transition) ---
+
+def get_alert_notify_fingerprints() -> dict[str, str]:
+    path = _data_dir() / "alert_notify_state.json"
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(raw, dict):
+        return {str(k): str(v) for k, v in raw.items()}
+    return {}
+
+
+def set_alert_notify_fingerprint(rule_id: str, fingerprint: str) -> None:
+    state = get_alert_notify_fingerprints()
+    state[rule_id] = fingerprint
+    (_data_dir() / "alert_notify_state.json").write_text(
+        json.dumps(state, indent=2), encoding="utf-8"
+    )
+
+
+def clear_alert_notify_state(rule_id: str) -> None:
+    state = get_alert_notify_fingerprints()
+    if rule_id in state:
+        del state[rule_id]
+        (_data_dir() / "alert_notify_state.json").write_text(
+            json.dumps(state, indent=2), encoding="utf-8"
+        )
 
 
 # --- Custom strategy configs ---

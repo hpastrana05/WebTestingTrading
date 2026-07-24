@@ -4,15 +4,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
+from app.services.alert_scheduler import start_alert_checker, stop_alert_checker
 from app.services.telegram_bot import start_telegram_bot, stop_telegram_bot
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await start_telegram_bot()
+    start_alert_checker()
     try:
         yield
     finally:
+        await stop_alert_checker()
         await stop_telegram_bot()
 
 
