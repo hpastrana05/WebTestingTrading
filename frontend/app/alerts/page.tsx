@@ -29,21 +29,39 @@ function previewMessage(opts: {
   strategyId: string;
   ruleName: string;
 }): string {
-  const strategy =
-    opts.strategyId || "vwap_momentum";
+  const strategy = opts.strategyId || "oro_swing_adaptive";
+  if (opts.alertType === "ENTRADA") {
+    return [
+      `[ENTRADA] ${opts.symbol || "GC=F"} · ${opts.interval} · ${opts.side}`,
+      "",
+      `Estrategia: ${strategy}`,
+      `Regla: ${opts.ruleName || "Mi alerta"}`,
+      "",
+      "Niveles para el broker:",
+      "  Entrada: 2650.50",
+      "  SL:     2635.20  (−15.30 pts)",
+      "  TP:     2681.10  (+30.60 pts)",
+      "",
+      "Precio actual: 2650.50",
+      "Motivo: Señal de entrada",
+      "Estado: ABIERTA",
+      "Hora: 2026-07-24 15:45",
+    ].join("\n");
+  }
   return [
-    `[${opts.alertType}] ${opts.symbol || "QQQ"} · ${opts.interval} · ${opts.side}`,
+    `[SALIDA] ${opts.symbol || "GC=F"} · ${opts.interval} · ${opts.side}`,
     "",
     `Estrategia: ${strategy}`,
     `Regla: ${opts.ruleName || "Mi alerta"}`,
-    "Precio: 478.1200",
-    opts.alertType === "ENTRADA" ? "Entrada: 478.1200" : "Entrada: 476.5000",
-    opts.alertType === "ENTRADA" ? "Salida: —" : "Salida: 478.1200",
-    "SL: 475.5000",
-    "TP: 484.2000",
-    opts.alertType === "ENTRADA" ? "Motivo: Señal de entrada" : "Motivo: Take profit (TP)",
-    opts.alertType === "ENTRADA" ? "Estado: ABIERTA" : "Estado: CERRADA",
-    "Hora: 2026-07-24 15:45",
+    "",
+    "Precio: 2681.10",
+    "Entrada: 2650.50",
+    "Salida: 2681.10",
+    "SL: 2635.20  (−15.30 pts)",
+    "TP: 2681.10  (+30.60 pts)",
+    "Motivo: Take profit (TP)",
+    "Estado: CERRADA",
+    "Hora: 2026-07-24 16:10",
   ].join("\n");
 }
 

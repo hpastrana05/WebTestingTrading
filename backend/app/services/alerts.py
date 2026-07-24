@@ -113,7 +113,9 @@ def peek_rule_state(rule: AlertRule) -> dict:
         entry_idx = _find_entry_index(signals, last_signal, len(signals) - 1)
         if entry_idx is not None:
             entry_price = float(data["Close"].iloc[entry_idx])
-            stop, take = _levels_at_entry(frame, entry_idx)
+            stop, take = _levels_for_new_entry(frame, last_signal, len(signals) - 1)
+            if stop is None and take is None:
+                stop, take = _levels_at_entry(frame, entry_idx)
 
     pending = _detect_events(prev_signal, last_signal, rule.notify_on)
     return {
@@ -348,14 +350,40 @@ def _levels_at_entry(frame: pd.DataFrame | None, entry_idx: int) -> tuple[float 
         stop = float(frame["stop"].iloc[entry_idx])
     if "take" in frame.columns and pd.notna(frame["take"].iloc[entry_idx]):
         take = float(frame["take"].iloc[entry_idx])
-    if stop is None and "entry" in frame.columns and "stop" in frame.columns:
-        for k in range(entry_idx, max(-1, entry_idx - 5), -1):
-            if int(frame["entry"].iloc[k]) != 0 and pd.notna(frame["stop"].iloc[k]):
+    # Look back for the bar where the strategy actually stamped entry + levels
+    if (stop is None or take is None) and "entry" in frame.columns and "stop" in frame.columns:
+        for k in range(entry_idx, max(-1, entry_idx - 20), -1):
+            if int(frame["entry"].iloc[k]) == 0:
+                continue
+            if stop is None and pd.notna(frame["stop"].iloc[k]):
                 stop = float(frame["stop"].iloc[k])
-                if "take" in frame.columns and pd.notna(frame["take"].iloc[k]):
-                    take = float(frame["take"].iloc[k])
+            if take is None and "take" in frame.columns and pd.notna(frame["take"].iloc[k]):
+                take = float(frame["take"].iloc[k])
+            if stop is not None and take is not None:
                 break
     return stop, take
+
+
+def _levels_for_new_entry(
+    frame: pd.DataFrame | None,
+    side: int,
+    end_idx: int,
+) -> tuple[float | None, float | None]:
+    """Prefer the last frame entry matching `side` (with stop/take)."""
+    if frame is None or side == 0 or end_idx < 0:
+        return None, None
+    if "entry" in frame.columns:
+        for k in range(end_idx, max(-1, end_idx - 20), -1):
+            if int(frame["entry"].iloc[k]) != side:
+                continue
+            stop = take = None
+            if "stop" in frame.columns and pd.notna(frame["stop"].iloc[k]):
+                stop = float(frame["stop"].iloc[k])
+            if "take" in frame.columns and pd.notna(frame["take"].iloc[k]):
+                take = float(frame["take"].iloc[k])
+            if stop is not None or take is not None:
+                return stop, take
+    return _levels_at_entry(frame, end_idx)
 
 
 def _build_trade_context(
@@ -416,7 +444,7 @@ def _build_trade_context(
     # For a brand-new entry after a flip, refresh SL/TP from the new entry bar
     new_entry_stop = new_entry_take = None
     if last_signal != 0 and (prev_signal == 0 or prev_signal != last_signal):
-        new_entry_stop, new_entry_take = _levels_at_entry(frame, i)
+        new_entry_stop, new_entry_take = _levels_for_new_entry(frame, last_signal, i)
 
     return {
         "entry_price": entry_price,
@@ -443,8 +471,12 @@ def _payload_for_event(event: str, ctx: dict, last_price: float) -> dict:
             "current_price": last_price,
             "entry_price": ctx.get("new_entry_price") or last_price,
             "exit_price": None,
-            "stop_loss": ctx.get("new_entry_stop") or ctx.get("stop"),
-            "take_profit": ctx.get("new_entry_take") or ctx.get("take"),
+            "stop_loss": ctx.get("new_entry_stop")
+            if ctx.get("new_entry_stop") is not None
+            else ctx.get("stop"),
+            "take_profit": ctx.get("new_entry_take")
+            if ctx.get("new_entry_take") is not None
+            else ctx.get("take"),
             "trigger_reason": "Señal de entrada",
             "status": "ABIERTA",
         }

@@ -41,7 +41,25 @@ async def send_telegram_message(text: str) -> dict:
 def _price(value: float | None) -> str:
     if value is None or (isinstance(value, float) and (math.isnan(value) or math.isinf(value))):
         return "—"
-    return f"{float(value):.4f}"
+    v = float(value)
+    if abs(v) >= 100:
+        return f"{v:.2f}"
+    if abs(v) >= 1:
+        return f"{v:.4f}"
+    return f"{v:.6f}"
+
+
+def _delta(entry: float | None, level: float | None) -> str:
+    if entry is None or level is None:
+        return ""
+    if any(isinstance(x, float) and (math.isnan(x) or math.isinf(x)) for x in (entry, level)):
+        return ""
+    d = float(level) - float(entry)
+    sign = "+" if d >= 0 else ""
+    # Distances read better with 2 decimals for typical FX/futures/index points
+    if abs(d) >= 0.01:
+        return f"  ({sign}{d:.2f} pts)"
+    return f"  ({sign}{d:.6f} pts)"
 
 
 def format_signal_alert(
@@ -61,21 +79,44 @@ def format_signal_alert(
     timestamp: str = "",
     rule_name: str = "",
 ) -> str:
+    """
+    Telegram body. On ENTRADA, SL/TP are the levels to place at the broker.
+    """
     header = f"[{alert_type}] {ticker} · {timeframe} · {side}"
-    lines = [
-        header,
-        "",
-        f"Estrategia: {strategy_name}",
-    ]
+    lines = [header, "", f"Estrategia: {strategy_name}"]
     if rule_name:
         lines.append(f"Regla: {rule_name}")
+
+    is_entry = alert_type.upper() == "ENTRADA"
+    entry = entry_price if entry_price is not None else current_price
+
+    lines.append("")
+    if is_entry:
+        lines.append("Niveles para el broker:")
+        lines.append(f"  Entrada: {_price(entry)}")
+        if stop_loss is not None:
+            lines.append(f"  SL:     {_price(stop_loss)}{_delta(entry, stop_loss)}")
+        else:
+            lines.append("  SL:     — (la estrategia no define stop)")
+        if take_profit is not None:
+            lines.append(f"  TP:     {_price(take_profit)}{_delta(entry, take_profit)}")
+        else:
+            lines.append("  TP:     — (la estrategia no define take)")
+        lines.append("")
+        lines.append(f"Precio actual: {_price(current_price)}")
+    else:
+        lines.extend(
+            [
+                f"Precio: {_price(current_price)}",
+                f"Entrada: {_price(entry_price)}",
+                f"Salida: {_price(exit_price)}",
+                f"SL: {_price(stop_loss)}{_delta(entry_price, stop_loss) if stop_loss is not None else ''}",
+                f"TP: {_price(take_profit)}{_delta(entry_price, take_profit) if take_profit is not None else ''}",
+            ]
+        )
+
     lines.extend(
         [
-            f"Precio: {_price(current_price)}",
-            f"Entrada: {_price(entry_price)}",
-            f"Salida: {_price(exit_price)}",
-            f"SL: {_price(stop_loss)}",
-            f"TP: {_price(take_profit)}",
             f"Motivo: {trigger_reason or '—'}",
             f"Estado: {status or '—'}",
             f"Hora: {timestamp or '—'}",
@@ -137,16 +178,28 @@ def _format_rule_line(index: int, rule: AlertRule) -> str:
 def _format_state_block(index: int | None, state: dict) -> str:
     flag = "ON" if state.get("enabled") else "OFF"
     header = f"#{index} {state.get('name')}" if index is not None else str(state.get("name"))
+    entry = state.get("entry_price")
+    stop = state.get("stop_loss")
+    take = state.get("take_profit")
     lines = [
         f"{header} [{flag}]",
         f"{state.get('symbol')} · {state.get('interval')} · {state.get('side')}",
         f"Estrategia: {state.get('strategy_name')}",
         f"Precio: {_price(state.get('price'))}",
-        f"Entrada: {_price(state.get('entry_price'))}",
-        f"SL: {_price(state.get('stop_loss'))}",
-        f"TP: {_price(state.get('take_profit'))}",
-        f"Barra: {state.get('date') or '—'}",
     ]
+    if state.get("side") not in (None, "FLAT", "—"):
+        lines.append(f"Entrada: {_price(entry)}")
+        lines.append(
+            f"SL: {_price(stop)}{_delta(entry, stop) if stop is not None else ''}"
+            if stop is not None
+            else "SL: —"
+        )
+        lines.append(
+            f"TP: {_price(take)}{_delta(entry, take) if take is not None else ''}"
+            if take is not None
+            else "TP: —"
+        )
+    lines.append(f"Barra: {state.get('date') or '—'}")
     pending = state.get("pending_events") or []
     if pending:
         lines.append(f"Pendiente: {', '.join(pending)} (usa /check)")
