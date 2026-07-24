@@ -525,8 +525,16 @@ def convert_pinescript(code: str) -> dict[str, Any]:
     interval = "5m" if re.search(r"intraday|session|1545|15:45", text, re.I) else "1d"
     period = "5d" if interval.endswith("m") or interval.endswith("h") else "1y"
     yahoo = "QQQ"
-    if re.search(r"NASDAQ|NAS100|QQQ|IXIC", raw, re.I):
+    if re.search(r"XAU|GOLD|GC=F|\bORO\b", raw, re.I):
+        yahoo = "GC=F"
+        interval = "1d"
+        period = "2y"
+    elif re.search(r"NASDAQ|NAS100|QQQ|IXIC", raw, re.I):
         yahoo = "QQQ"
+    elif re.search(r"\bAAPL\b|\bMSFT\b|\bSPY\b|\bBTC", raw, re.I):
+        m_sym = re.search(r"\b(AAPL|MSFT|SPY|BTC-USD|EURUSD)\b", raw, re.I)
+        if m_sym:
+            yahoo = m_sym.group(1).upper()
 
     config = StrategyConfig(
         name=name[:120],
@@ -544,17 +552,120 @@ def convert_pinescript(code: str) -> dict[str, Any]:
         exit=exit_group,
     )
 
-    warnings.insert(
-        0,
-        "Best-effort import only — review every rule in the Strategy Creator before backtesting.",
-    )
-    if "pine_tradingview" not in "".join(warnings):
-        pass
+    _append_unsupported_feature_warnings(text, raw, warnings)
+    reliability = _reliability_level(warnings, long_children, short_children, direction)
 
-    # Deduplicate warnings
+    banner = [
+        "NOT 100% RELIABLE — this is a best-effort conversion, not a Pine Script interpreter.",
+        "Always review every entry/exit rule (and any generated Python) before backtesting. "
+        "Results will differ from TradingView (data feed, fills, sizing, unsupported logic).",
+        f"Estimated import confidence: {reliability}.",
+    ]
+    for line in reversed(banner):
+        warnings.insert(0, line)
+
+    # Deduplicate warnings (keep order)
     uniq: list[str] = []
     for w in warnings:
         if w not in uniq:
             uniq.append(w)
 
-    return {"config": config, "warnings": uniq}
+    return {"config": config, "warnings": uniq, "reliability": reliability}
+
+
+def _append_unsupported_feature_warnings(text: str, raw: str, warnings: list[str]) -> None:
+    """Flag common Pine features we cannot faithfully map."""
+    checks: list[tuple[str, str]] = [
+        (
+            r"\bstrategy\.closedtrades\b|\bconsecutiveLoss",
+            "Anti-streak / closed-trade history (strategy.closedtrades) is not imported — "
+            "adaptive filters after losses will be missing.",
+        ),
+        (
+            r"[^\n?]*\?\s*[^\n:]+\s*:",
+            "Ternary operators (cond ? a : b) are not evaluated — adaptive thresholds may be wrong.",
+        ),        (
+            r"\bfor\s+\w+\s*=|\bwhile\s+",
+            "Loops (for/while) are not supported — that logic was skipped.",
+        ),
+        (
+            r"\brequest\.security\b",
+            "request.security() multi-timeframe data is not supported.",
+        ),
+        (
+            r"\bvar\s+",
+            "Pine 'var' state across bars is not fully modelled — stateful logic may be incomplete.",
+        ),
+        (
+            r":=",
+            "Reassignments (:=) are not tracked like Pine — only simple '=' assigns are read.",
+        ),
+        (
+            r"trail_offset|trail_points|trail_price",
+            "Trailing stops are not supported — only fixed SL/TP or ATR/R:R structure exits.",
+        ),
+        (
+            r"strategy\.exit\s*\([^)]*qty_percent|pyramiding\s*=\s*[1-9]",
+            "Partial exits / pyramiding are not modelled the same way as TradingView.",
+        ),
+        (
+            r"positionSize|riskMoney|default_qty|strategy\.equity",
+            "Custom position sizing from Pine is ignored — use Risk % / position size in Backtest.",
+        ),
+        (
+            r"commission_value|slippage\s*=",
+            "Commission/slippage from strategy() are not applied automatically — set them in Backtest.",
+        ),
+        (
+            r"\barray\.|\bmatrix\.|\bmap\.",
+            "Arrays/matrices/maps are not supported.",
+        ),
+        (
+            r"\bline\.new|\blabel\.new|\bbox\.new|\btable\.",
+            "Drawing objects (lines/labels/boxes) are ignored (visual only).",
+        ),
+    ]
+    for pattern, message in checks:
+        if re.search(pattern, text, flags=re.I | re.M):
+            warnings.append(message)
+
+    if re.search(r"XAU|GOLD|GC=F|ORO", raw, re.I) and "yahoo_ticker" not in "".join(warnings):
+        warnings.append(
+            "Gold/XAU detected in script text — set Yahoo ticker manually (e.g. GC=F or XAUUSD=X)."
+        )
+
+
+def _reliability_level(
+    warnings: list[str],
+    long_children: list,
+    short_children: list,
+    direction: str,
+) -> str:
+    score = 70
+    lowered = " ".join(warnings).lower()
+    if "placeholder" in lowered:
+        score -= 35
+    if "could not detect" in lowered:
+        score -= 25
+    if "closedtrades" in lowered or "anti-streak" in lowered:
+        score -= 20
+    if "ternary" in lowered:
+        score -= 15
+    if "loops" in lowered or "request.security" in lowered:
+        score -= 20
+    if "trailing" in lowered:
+        score -= 10
+    if direction in ("long", "both") and not long_children:
+        score -= 20
+    if direction == "both" and not short_children:
+        score -= 15
+    # bonus if we have real conditions
+    n = len(long_children) + len(short_children)
+    if n >= 2:
+        score += 5
+    score = max(15, min(85, score))
+    if score >= 65:
+        return f"medium ({score}%) — usable as a draft after review"
+    if score >= 40:
+        return f"low ({score}%) — expect missing/wrong rules; review carefully"
+    return f"very low ({score}%) — treat as a rough sketch only"

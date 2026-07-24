@@ -260,7 +260,13 @@ export default function BacktestClient() {
             <select value={strategyId} onChange={(e) => setStrategyId(e.target.value)}>
               {strategies.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.source === "custom" ? `★ ${s.name}` : s.name}
+                  {s.source === "custom"
+                    ? `★ ${s.name}`
+                    : s.source === "generated" || s.id.startsWith("gen_")
+                      ? s.name.startsWith("[Python]")
+                        ? s.name
+                        : `[Python] ${s.name}`
+                      : s.name}
                 </option>
               ))}
             </select>
@@ -370,7 +376,7 @@ export default function BacktestClient() {
                   value={parameters[key] ?? meta.default}
                   min={meta.min}
                   max={meta.max}
-                  step={meta.step ?? 1}
+                  step={meta.type === "float" ? "any" : (meta.step ?? 1)}
                   onChange={(e) =>
                     setParameters((prev) => ({ ...prev, [key]: Number(e.target.value) }))
                   }

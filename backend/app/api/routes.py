@@ -8,6 +8,8 @@ from app.schemas import (
     BacktestResult,
     PineImportRequest,
     PineImportResult,
+    PineSavePythonResult,
+    GeneratedRenameRequest,
     StrategyConfig,
     StrategyConfigUpdate,
     StrategyInfo,
@@ -17,13 +19,31 @@ from app.schemas import (
 from app.services import storage
 from app.services.alerts import check_alert_rules
 from app.services.backtester import run_backtest
+from app.services.generated_strategies import (
+    delete_generated_strategy,
+    rename_generated_strategy,
+    save_generated_strategy,
+    with_python_prefix,
+)
 from app.services.indicator_catalog import INDICATOR_CATALOG, OPERATORS, PRICE_FIELDS
 from app.services.market_data import fetch_ohlcv
 from app.services.pine_import import convert_pinescript
+from app.services.pine_to_python import generate_python_strategy
 from app.services.telegram_bot import send_telegram_message
 from app.services.tuner import run_tuning
 from app.strategies import get_strategy, list_builtin_strategies
 from app.strategies.config_strategy import ConfigStrategy
+from app.strategies.sma_crossover import SmaCrossover
+from app.strategies.rsi import RsiStrategy
+from app.strategies.vwap_momentum import VwapMomentum
+from app.strategies.oro_swing_adaptive import OroSwingAdaptive
+
+_CORE_BUILTIN_IDS = {
+    SmaCrossover.id,
+    RsiStrategy.id,
+    VwapMomentum.id,
+    OroSwingAdaptive.id,
+}
 
 router = APIRouter()
 
@@ -50,13 +70,15 @@ def get_indicators():
 def get_strategies():
     items: list[StrategyInfo] = []
     for s in list_builtin_strategies():
+        source = "builtin" if s.id in _CORE_BUILTIN_IDS else "generated"
+        name = with_python_prefix(s.name) if source == "generated" else s.name
         items.append(
             StrategyInfo(
                 id=s.id,
-                name=s.name,
+                name=name,
                 description=s.description,
                 parameters=s.parameters,
-                source="builtin",
+                source=source,
                 direction=getattr(s, "direction", "long"),
             )
         )
@@ -112,17 +134,77 @@ def remove_strategy_config(strategy_id: str):
 
 @router.post("/strategies/import-pine", response_model=PineImportResult)
 def import_pinescript(body: PineImportRequest):
-    """Best-effort convert Pine Script into a Strategy Creator draft."""
+    """Best-effort convert Pine Script into Creator draft + Python module source."""
     try:
         result = convert_pinescript(body.code)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 — surface converter bugs cleanly
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=400,
             detail=f"Could not import Pine Script: {exc}",
         ) from exc
-    return PineImportResult(config=result["config"], warnings=result["warnings"])
+
+    config: StrategyConfig = result["config"]
+    py = generate_python_strategy(config)
+    warnings = list(result["warnings"])
+    return PineImportResult(
+        config=config,
+        warnings=warnings,
+        python_code=py["python_code"],
+        python_filename=py["filename"],
+        strategy_id=py["strategy_id"],
+        reliability=str(result.get("reliability") or "low"),
+    )
+
+
+@router.post("/strategies/import-pine/save-python", response_model=PineSavePythonResult)
+def save_pinescript_as_python(body: PineImportRequest):
+    """Convert Pine and persist a generated Python strategy (hot-loaded)."""
+    try:
+        result = convert_pinescript(body.code)
+        path, strategy, source = save_generated_strategy(result["config"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not save Python strategy: {exc}",
+        ) from exc
+    return PineSavePythonResult(
+        id=strategy.id,
+        name=strategy.name,
+        filename=path.name,
+        python_code=source,
+        warnings=list(result["warnings"]),
+    )
+
+
+@router.delete("/strategies/generated/{strategy_id}")
+def remove_generated_strategy(strategy_id: str):
+    try:
+        delete_generated_strategy(strategy_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.patch("/strategies/generated/{strategy_id}", response_model=StrategyInfo)
+def rename_generated(strategy_id: str, body: GeneratedRenameRequest):
+    try:
+        strategy = rename_generated_strategy(strategy_id, body.name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return StrategyInfo(
+        id=strategy.id,
+        name=with_python_prefix(strategy.name),
+        description=strategy.description,
+        parameters=strategy.parameters,
+        source="generated",
+        direction=getattr(strategy, "direction", "long"),
+    )
 
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyInfo)
@@ -131,10 +213,14 @@ def get_strategy_detail(strategy_id: str):
         s = get_strategy(strategy_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    source = "custom" if isinstance(s, ConfigStrategy) else "builtin"
+    source = (
+        "custom"
+        if isinstance(s, ConfigStrategy)
+        else ("generated" if str(s.id).startswith("gen_") else "builtin")
+    )
     return StrategyInfo(
         id=s.id,
-        name=s.name,
+        name=with_python_prefix(s.name) if source == "generated" else s.name,
         description=s.description,
         parameters=s.parameters,
         source=source,

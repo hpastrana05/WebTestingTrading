@@ -275,7 +275,13 @@ export default function TuningPage() {
             <select value={strategyId} onChange={(e) => setStrategyId(e.target.value)}>
               {strategies.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.source === "custom" ? `${s.name} (custom)` : s.name}
+                  {s.source === "custom"
+                    ? `${s.name} (custom)`
+                    : s.source === "generated" || s.id.startsWith("gen_")
+                      ? s.name.startsWith("[Python]")
+                        ? s.name
+                        : `[Python] ${s.name}`
+                      : s.name}
                 </option>
               ))}
             </select>

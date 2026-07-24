@@ -35,7 +35,7 @@ export type StrategyInfo = {
     string,
     { type: string; default: number; min?: number; max?: number; step?: number }
   >;
-  source?: "builtin" | "custom";
+  source?: "builtin" | "custom" | "generated";
   direction?: "long" | "short" | "both";
 };
 
@@ -172,9 +172,34 @@ export const api = {
   deleteStrategyConfig: (id: string) =>
     request<{ ok: boolean }>(`/api/strategies/configs/${id}`, { method: "DELETE" }),
   importPine: (code: string) =>
-    request<{ config: StrategyConfig; warnings: string[] }>("/api/strategies/import-pine", {
+    request<{
+      config: StrategyConfig;
+      warnings: string[];
+      python_code: string;
+      python_filename: string;
+      strategy_id: string;
+      reliability: string;
+    }>("/api/strategies/import-pine", {
       method: "POST",
       body: JSON.stringify({ code }),
+    }),
+  savePineAsPython: (code: string) =>
+    request<{
+      id: string;
+      name: string;
+      filename: string;
+      python_code: string;
+      warnings: string[];
+    }>("/api/strategies/import-pine/save-python", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+  deleteGeneratedStrategy: (id: string) =>
+    request<{ ok: boolean }>(`/api/strategies/generated/${id}`, { method: "DELETE" }),
+  renameGeneratedStrategy: (id: string, name: string) =>
+    request<StrategyInfo>(`/api/strategies/generated/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
     }),
   runBacktest: (body: unknown) =>
     request<BacktestResult>("/api/backtest", {

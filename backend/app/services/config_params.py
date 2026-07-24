@@ -10,11 +10,22 @@ def _param_meta(value: float | int, *, is_float: bool) -> dict[str, Any]:
     if is_float:
         default = float(value)
         step = 0.1 if abs(default) < 10 else 0.5
+        # min/max must sit on the same step grid as `default`, or HTML
+        # <input type="number" step> rejects the default (e.g. min 0.275 + step 0.1
+        # makes 1.1 invalid — nearest are 1.075 / 1.175).
+        raw_min = max(step, default * 0.25)
+        raw_max = max(default * 4, default + 5)
+        min_v = round(round(raw_min / step) * step, 10)
+        max_v = round(round(raw_max / step) * step, 10)
+        if min_v > default:
+            min_v = max(step, round(default - step * 5, 10))
+        if max_v < default:
+            max_v = round(default + step * 20, 10)
         return {
             "type": "float",
             "default": default,
-            "min": max(0.01, default * 0.25),
-            "max": max(default * 4, default + 5),
+            "min": min_v,
+            "max": max_v,
             "step": step,
         }
     default = int(value)

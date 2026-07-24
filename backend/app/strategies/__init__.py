@@ -16,6 +16,13 @@ _BUILTINS: dict[str, Strategy] = {
 def get_strategy(strategy_id: str) -> Strategy:
     if strategy_id in _BUILTINS:
         return _BUILTINS[strategy_id]
+    # Generated Python strategies (from Pine import)
+    try:
+        from app.services.generated_strategies import get_generated_strategy
+
+        return get_generated_strategy(strategy_id)
+    except KeyError:
+        pass
     try:
         config = storage.get_strategy_config(strategy_id)
         return ConfigStrategy(config)
@@ -24,11 +31,16 @@ def get_strategy(strategy_id: str) -> Strategy:
 
 
 def list_strategies() -> list[Strategy]:
+    from app.services.generated_strategies import list_generated_strategies
+
     items: list[Strategy] = list(_BUILTINS.values())
+    items.extend(list_generated_strategies())
     for config in storage.list_strategy_configs():
         items.append(ConfigStrategy(config))
     return items
 
 
 def list_builtin_strategies() -> list[Strategy]:
-    return list(_BUILTINS.values())
+    from app.services.generated_strategies import list_generated_strategies
+
+    return list(_BUILTINS.values()) + list_generated_strategies()

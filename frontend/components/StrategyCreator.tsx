@@ -178,10 +178,16 @@ export default function StrategyCreator({ strategyId }: Props) {
     setConfig((prev) => ({ ...prev, exit }));
   }
 
-  function onPineImported(draft: Omit<StrategyConfig, "id">, notes: string[]) {
+  function onPineImported(
+    draft: Omit<StrategyConfig, "id">,
+    notes: string[],
+    _meta?: { pythonCode: string; filename: string; strategyId: string }
+  ) {
     setConfig(applyImported(draft));
     setWarnings(notes);
-    setStatus("Pine Script converted — review rules below, then save.");
+    setStatus(
+      "Pine draft loaded — NOT 100% reliable. Review every rule below before saving or backtesting."
+    );
     setError("");
     setShowImport(false);
   }
@@ -291,7 +297,7 @@ export default function StrategyCreator({ strategyId }: Props) {
 
       {warnings.length > 0 && (
         <div className="warning-list">
-          <strong>Import notes</strong>
+          <strong>Pine import — requires review (not 100% reliable)</strong>
           <ul>
             {warnings.map((w) => (
               <li key={w}>{w}</li>

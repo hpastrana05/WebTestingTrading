@@ -12,7 +12,7 @@ class StrategyInfo(BaseModel):
     name: str
     description: str
     parameters: dict[str, dict]
-    source: str = "builtin"  # builtin | custom
+    source: str = "builtin"  # builtin | custom | generated
     direction: str = "long"  # long | short | both
 
 
@@ -122,6 +122,21 @@ class PineImportRequest(BaseModel):
 class PineImportResult(BaseModel):
     config: StrategyConfig
     warnings: list[str] = Field(default_factory=list)
+    python_code: str = ""
+    python_filename: str = ""
+    strategy_id: str = ""
+    reliability: str = "low"
+
+class PineSavePythonResult(BaseModel):
+    id: str
+    name: str
+    filename: str
+    python_code: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class GeneratedRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
 
 
 # --- Backtest / tuning / alerts ---
