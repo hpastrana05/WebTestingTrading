@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { AlertRule, api, StrategyInfo } from "@/lib/api";
+import { AlertRule, api, StrategyInfo, TelegramChat } from "@/lib/api";
 import { DATA_INTERVALS } from "@/lib/intervals";
 
 function defaultPeriodForInterval(interval: string): string {
@@ -68,6 +68,7 @@ function previewMessage(opts: {
 export default function AlertsPage() {
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [rules, setRules] = useState<AlertRule[]>([]);
+  const [chats, setChats] = useState<TelegramChat[]>([]);
   const [message, setMessage] = useState("Test alert from Trading Lab");
   const [name, setName] = useState("QQQ VWAP 5m");
   const [strategyId, setStrategyId] = useState("");
@@ -76,14 +77,21 @@ export default function AlertsPage() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [chatName, setChatName] = useState("Mi chat");
+  const [chatId, setChatId] = useState("");
+  const [editingChatId, setEditingChatId] = useState<string>("");
+  const [editingChatName, setEditingChatName] = useState("");
+  const [editingChatValue, setEditingChatValue] = useState("");
 
   async function refresh() {
-    const [strategyList, ruleList] = await Promise.all([
+    const [strategyList, ruleList, chatList] = await Promise.all([
       api.getStrategies(),
       api.getAlertRules(),
+      api.getTelegramChats(),
     ]);
     setStrategies(strategyList);
     setRules(ruleList);
+    setChats(chatList);
     if (!strategyId && strategyList[0]) setStrategyId(strategyList[0].id);
   }
 
@@ -132,6 +140,66 @@ export default function AlertsPage() {
     if (!id) return;
     await api.deleteAlertRule(id);
     await refresh();
+  }
+
+  async function addChat(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setStatus("");
+    try {
+      await api.createTelegramChat({ name: chatName, chat_id: chatId });
+      setStatus("Telegram chat added.");
+      setChatId("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add chat");
+    }
+  }
+
+  async function removeChat(chatEntryId?: string) {
+    if (!chatEntryId) return;
+    await api.deleteTelegramChat(chatEntryId);
+    await refresh();
+  }
+
+  function startEditChat(chat: TelegramChat) {
+    setEditingChatId(chat.id);
+    setEditingChatName(chat.name);
+    setEditingChatValue(chat.chat_id);
+  }
+
+  function cancelEditChat() {
+    setEditingChatId("");
+    setEditingChatName("");
+    setEditingChatValue("");
+  }
+
+  async function saveEditChat(chatEntryId: string) {
+    setError("");
+    setStatus("");
+    try {
+      await api.updateTelegramChat(chatEntryId, {
+        name: editingChatName,
+        chat_id: editingChatValue,
+      });
+      setStatus("Telegram chat updated.");
+      cancelEditChat();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update chat");
+    }
+  }
+
+  async function toggleChatEnabled(chat: TelegramChat) {
+    setError("");
+    setStatus("");
+    try {
+      await api.updateTelegramChat(chat.id, { enabled: !chat.enabled });
+      setStatus(`Chat ${chat.name} ${chat.enabled ? "disabled" : "enabled"}.`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update chat");
+    }
   }
 
   async function runCheck() {
@@ -248,6 +316,112 @@ export default function AlertsPage() {
 
       {status && <div className="success">{status}</div>}
       {error && <div className="error">{error}</div>}
+
+      <section className="panel stack">
+        <h2>Telegram chats</h2>
+        <p className="muted">
+          Añade los chats que van a recibir tus alertas. A cada chat le das un nombre
+          para poder distinguirlos.
+        </p>
+
+        <form className="row" onSubmit={addChat}>
+          <label>
+            Nombre
+            <input value={chatName} onChange={(e) => setChatName(e.target.value)} />
+          </label>
+          <label>
+            Chat id
+            <input
+              value={chatId}
+              onChange={(e) => setChatId(e.target.value)}
+              placeholder="Ej: 123456789"
+            />
+          </label>
+          <button type="submit">Add</button>
+        </form>
+
+        {chats.length === 0 ? (
+          <p className="muted">No hay chats configurados aún.</p>
+        ) : (
+          <div className="table-wrap" style={{ marginTop: 10 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Chat ID</th>
+                  <th>Enabled</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {chats.map((c) => (
+                  <tr key={c.id}>
+                    <td>
+                      {editingChatId === c.id ? (
+                        <input
+                          value={editingChatName}
+                          onChange={(e) => setEditingChatName(e.target.value)}
+                        />
+                      ) : (
+                        c.name
+                      )}
+                    </td>
+                    <td>
+                      {editingChatId === c.id ? (
+                        <input
+                          value={editingChatValue}
+                          onChange={(e) => setEditingChatValue(e.target.value)}
+                        />
+                      ) : (
+                        c.chat_id
+                      )}
+                    </td>
+                    <td>{c.enabled ? "yes" : "no"}</td>
+                    <td>
+                      <div className="row" style={{ gap: 8 }}>
+                        {editingChatId === c.id ? (
+                          <>
+                            <button type="button" onClick={() => saveEditChat(c.id)}>
+                              Save
+                            </button>
+                            <button className="secondary" type="button" onClick={cancelEditChat}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="secondary"
+                              type="button"
+                              onClick={() => toggleChatEnabled(c)}
+                            >
+                              {c.enabled ? "Disable" : "Enable"}
+                            </button>
+                            <button
+                              className="secondary"
+                              type="button"
+                              onClick={() => startEditChat(c)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="secondary"
+                              type="button"
+                              onClick={() => removeChat(c.id)}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="panel stack">
         <h2>Saved rules</h2>

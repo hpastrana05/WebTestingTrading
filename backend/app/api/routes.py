@@ -10,6 +10,9 @@ from app.schemas import (
     PineImportResult,
     PineSavePythonResult,
     GeneratedRenameRequest,
+    TelegramChat,
+    TelegramChatCreate,
+    TelegramChatUpdate,
     StrategyConfig,
     StrategyConfigUpdate,
     StrategyInfo,
@@ -327,3 +330,38 @@ def remove_alert_rule(rule_id: str):
 async def check_alerts():
     """Evaluate saved rules and notify on entry/exit flips."""
     return {"results": await check_alert_rules()}
+
+
+# --- Telegram chat targets ---
+
+
+@router.get("/telegram/chats", response_model=list[TelegramChat])
+def get_telegram_chats():
+    return storage.list_telegram_chats()
+
+
+@router.post("/telegram/chats", response_model=TelegramChat)
+def create_telegram_chat(body: TelegramChatCreate):
+    try:
+        return storage.create_telegram_chat(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/telegram/chats/{chat_entry_id}", response_model=TelegramChat)
+def patch_telegram_chat(chat_entry_id: str, body: TelegramChatUpdate):
+    try:
+        return storage.update_telegram_chat(chat_entry_id, body)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/telegram/chats/{chat_entry_id}")
+def delete_telegram_chat(chat_entry_id: str):
+    try:
+        storage.delete_telegram_chat(chat_entry_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}

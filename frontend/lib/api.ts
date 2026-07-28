@@ -155,6 +155,13 @@ export type AlertRule = {
   notify_on: string[];
 };
 
+export type TelegramChat = {
+  id: string;
+  name: string;
+  chat_id: string;
+  enabled: boolean;
+};
+
 export const api = {
   getStrategies: () => request<StrategyInfo[]>("/api/strategies"),
   getIndicators: () => request<IndicatorCatalog>("/api/indicators"),
@@ -231,4 +238,22 @@ export const api = {
     }),
   deleteAlertRule: (id: string) =>
     request<{ ok: boolean }>(`/api/alerts/rules/${id}`, { method: "DELETE" }),
+
+  // Telegram chat targets
+  getTelegramChats: () => request<TelegramChat[]>("/api/telegram/chats", { method: "GET" }),
+  createTelegramChat: (body: { name: string; chat_id: string }) =>
+    request<TelegramChat>("/api/telegram/chats", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateTelegramChat: (
+    chatEntryId: string,
+    body: Partial<Pick<TelegramChat, "name" | "chat_id" | "enabled">>
+  ) =>
+    request<TelegramChat>(`/api/telegram/chats/${chatEntryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteTelegramChat: (chatEntryId: string) =>
+    request<{ ok: boolean }>(`/api/telegram/chats/${chatEntryId}`, { method: "DELETE" }),
 };

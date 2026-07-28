@@ -15,24 +15,43 @@ _application = None
 async def send_telegram_message(text: str) -> dict:
     """Send a plain-text message via the Telegram Bot API."""
     token = settings.telegram_bot_token
-    chat_id = settings.telegram_chat_id
-
-    if not token or not chat_id:
-        return {
-            "ok": False,
-            "detail": "TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in .env",
-        }
+    if not token:
+        return {"ok": False, "detail": "TELEGRAM_BOT_TOKEN must be set in .env"}
 
     try:
+        chats = storage.list_enabled_telegram_chats()
+        if not chats:
+            return {"ok": False, "detail": "No Telegram chats enabled (add in Alerts UI)"}
+
+        sent_to: list[dict] = []
+        failed_to: list[dict] = []
+
         # Prefer the long-polling Application bot if it's running
-        if _application is not None and _application.bot is not None:
-            message = await _application.bot.send_message(chat_id=chat_id, text=text)
-        else:
+        app_bot = _application.bot if _application is not None else None
+        bot = None
+        if app_bot is None:
             from telegram import Bot
 
             bot = Bot(token=token)
-            message = await bot.send_message(chat_id=chat_id, text=text)
-        return {"ok": True, "message_id": message.message_id}
+
+        for c in chats:
+            try:
+                if app_bot is not None:
+                    message = await app_bot.send_message(chat_id=c.chat_id, text=text)
+                else:
+                    message = await bot.send_message(chat_id=c.chat_id, text=text)  # type: ignore[union-attr]
+                sent_to.append(
+                    {"chat_entry_id": c.id, "chat_id": c.chat_id, "message_id": message.message_id}
+                )
+            except Exception as exc:
+                failed_to.append({"chat_entry_id": c.id, "chat_id": c.chat_id, "detail": str(exc)})
+
+        ok = len(sent_to) > 0
+        detail = None
+        if not ok:
+            detail = failed_to[0].get("detail") if failed_to else "All Telegram sends failed"
+
+        return {"ok": ok, "sent_to": sent_to, "failed_to": failed_to, "detail": detail}
     except Exception as exc:
         logger.exception("Telegram send failed")
         return {"ok": False, "detail": str(exc)}
@@ -141,14 +160,15 @@ Ejemplos: /state 1   /disable 2   /show a1b2c3"""
 
 
 def _authorized(update) -> bool:
-    """Only accept messages from the configured chat."""
-    expected = (settings.telegram_chat_id or "").strip()
-    if not expected:
-        return False
+    """Only accept messages from enabled chats configured in Alerts UI."""
     chat = update.effective_chat
     if chat is None:
         return False
-    return str(chat.id) == expected
+    chat_id = str(chat.id)
+    # Keep the env chat as a fallback authorized chat for bot administration.
+    env_chat = (settings.telegram_chat_id or "").strip()
+    enabled = {c.chat_id for c in storage.list_enabled_telegram_chats()}
+    return chat_id == env_chat or chat_id in enabled
 
 
 async def _deny_if_unauthorized(update) -> bool:

@@ -3,7 +3,15 @@ import uuid
 from pathlib import Path
 
 from app.config import settings
-from app.schemas import AlertRule, AlertRuleUpdate, StrategyConfig, StrategyConfigUpdate
+from app.schemas import (
+    AlertRule,
+    AlertRuleUpdate,
+    StrategyConfig,
+    StrategyConfigUpdate,
+    TelegramChat,
+    TelegramChatCreate,
+    TelegramChatUpdate,
+)
 
 
 def _data_dir() -> Path:
@@ -92,6 +100,88 @@ def clear_alert_notify_state(rule_id: str) -> None:
         (_data_dir() / "alert_notify_state.json").write_text(
             json.dumps(state, indent=2), encoding="utf-8"
         )
+
+
+# --- Telegram chats management ---
+
+def _telegram_chats_path() -> Path:
+    return _data_dir() / "telegram_chats.json"
+
+
+def _ensure_default_telegram_chats() -> None:
+    """
+    Seed the JSON storage on first run, using TELEGRAM_CHAT_ID from .env.
+
+    Important: we only seed when the file does not exist yet, so user deletions
+    are respected across restarts (file may exist but be empty).
+    """
+    path = _telegram_chats_path()
+    if path.exists():
+        return
+
+    default_chat_id = (settings.telegram_chat_id or "").strip()
+    if not default_chat_id:
+        _write_json("telegram_chats.json", [])
+        return
+
+    default = [
+        {"id": str(uuid.uuid4()), "name": "Default", "chat_id": default_chat_id, "enabled": True}
+    ]
+    _write_json("telegram_chats.json", default)
+
+
+def list_telegram_chats() -> list[TelegramChat]:
+    _ensure_default_telegram_chats()
+    return [TelegramChat(**row) for row in _read_json("telegram_chats.json")]
+
+
+def list_enabled_telegram_chats() -> list[TelegramChat]:
+    return [c for c in list_telegram_chats() if c.enabled]
+
+
+def create_telegram_chat(body: TelegramChatCreate) -> TelegramChat:
+    _ensure_default_telegram_chats()
+    chats = _read_json("telegram_chats.json")
+    # Avoid duplicates by chat_id
+    for row in chats:
+        if str(row.get("chat_id")) == body.chat_id:
+            raise ValueError(f"Chat already exists for chat_id={body.chat_id}")
+
+    stored = body.model_dump()
+    stored["id"] = str(uuid.uuid4())
+    chats.append(stored)
+    _write_json("telegram_chats.json", chats)
+    return TelegramChat(**stored)
+
+
+def update_telegram_chat(chat_entry_id: str, update: TelegramChatUpdate) -> TelegramChat:
+    _ensure_default_telegram_chats()
+    chats = _read_json("telegram_chats.json")
+    patch = update.model_dump(exclude_none=True)
+
+    # Prevent duplicate chat_id when updating
+    new_chat_id = patch.get("chat_id")
+    if new_chat_id is not None:
+        for row in chats:
+            if row.get("id") != chat_entry_id and str(row.get("chat_id")) == str(new_chat_id):
+                raise ValueError(f"Chat already exists for chat_id={new_chat_id}")
+
+    for idx, row in enumerate(chats):
+        if row.get("id") == chat_entry_id:
+            patched = {**row, **patch}
+            chats[idx] = patched
+            _write_json("telegram_chats.json", chats)
+            return TelegramChat(**patched)
+    raise KeyError(f"Telegram chat not found: {chat_entry_id}")
+
+
+def delete_telegram_chat(chat_entry_id: str) -> None:
+    _ensure_default_telegram_chats()
+    chats = _read_json("telegram_chats.json")
+    filtered = [c for c in chats if c.get("id") != chat_entry_id]
+    if len(filtered) == len(chats):
+        raise KeyError(f"Telegram chat not found: {chat_entry_id}")
+    _write_json("telegram_chats.json", filtered)
 
 
 # --- Custom strategy configs ---

@@ -249,3 +249,25 @@ class AlertRuleUpdate(BaseModel):
     parameters: dict | None = None
     enabled: bool | None = None
     notify_on: list[str] | None = None
+
+
+# --- Telegram chats management ---
+
+class TelegramChat(BaseModel):
+    id: str | None = None
+    name: str
+    # Telegram numeric chat id, stored as string to avoid int size issues
+    chat_id: str
+    enabled: bool = True
+
+
+class TelegramChatCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    chat_id: str = Field(..., min_length=1)
+    enabled: bool = True
+
+
+class TelegramChatUpdate(BaseModel):
+    name: str | None = None
+    chat_id: str | None = None
+    enabled: bool | None = None
