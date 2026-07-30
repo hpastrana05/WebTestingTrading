@@ -40,12 +40,14 @@ from app.strategies.sma_crossover import SmaCrossover
 from app.strategies.rsi import RsiStrategy
 from app.strategies.vwap_momentum import VwapMomentum
 from app.strategies.oro_swing_adaptive import OroSwingAdaptive
+from app.strategies.eurusd_trend_pullback import EurUsdTrendPullback
 
 _CORE_BUILTIN_IDS = {
     SmaCrossover.id,
     RsiStrategy.id,
     VwapMomentum.id,
     OroSwingAdaptive.id,
+    EurUsdTrendPullback.id,
 }
 
 router = APIRouter()
