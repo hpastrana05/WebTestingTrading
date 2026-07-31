@@ -146,20 +146,40 @@ def format_signal_alert(
 
 HELP_TEXT = """Comandos del bot
 
-/help — esta ayuda
-/ping — comprobar que el bot responde
-/list — lista de alertas (reglas)
+Alertas (reglas)
+/list — lista de alertas
 /show <n|id|nombre> — detalle de una alerta
 /state [n|id|nombre] — estado actual (todas o una)
-/check — evaluar reglas ahora (envía ENTRADA/SALIDA si hay señal)
-/enable [n|id|nombre] — activar una regla de alerta
-/disable [n|id|nombre] — desactivar una regla de alerta
-/chats — chats de Telegram configurados
-/chat_on <n|nombre> — activar un chat (recibe alertas)
-/chat_off <n|nombre> — desactivar un chat (deja de recibir)
+/check — evaluar ahora (envía ENTRADA/SALIDA si hay señal)
+/enable [n|id|nombre] — activar una regla
+/disable [n|id|nombre] — desactivar una regla
 
-Sin número, /enable y /disable usan la única regla si solo hay una.
-Ejemplos: /disable 1   /enable vwap   /chat_off 2"""
+Chats Telegram
+/chats — lista de chats
+/chat_on <n|nombre> — activar chat (recibe alertas)
+/chat_off <n|nombre> — desactivar chat (no recibe)
+
+Otros
+/help — esta ayuda
+/ping — comprobar que el bot responde
+
+Sin número, /enable /disable /chat_on /chat_off usan el único ítem si solo hay uno.
+Ejemplos: /disable 1 · /enable vwap · /chat_off 2 · /chats"""
+
+
+BOT_COMMANDS = [
+    ("help", "Lista de comandos"),
+    ("ping", "Comprobar que el bot responde"),
+    ("list", "Lista de alertas (reglas)"),
+    ("show", "Detalle de una alerta"),
+    ("state", "Estado actual de alertas"),
+    ("check", "Evaluar reglas ahora"),
+    ("enable", "Activar una regla de alerta"),
+    ("disable", "Desactivar una regla de alerta"),
+    ("chats", "Lista de chats Telegram"),
+    ("chat_on", "Activar un chat (recibe alertas)"),
+    ("chat_off", "Desactivar un chat"),
+]
 
 
 def _chat_id_from_update(update) -> str | None:
@@ -576,6 +596,14 @@ async def start_telegram_bot() -> None:
 
     await app.initialize()
     await app.start()
+    try:
+        from telegram import BotCommand
+
+        await app.bot.set_my_commands(
+            [BotCommand(command=c, description=d) for c, d in BOT_COMMANDS]
+        )
+    except Exception:
+        logger.exception("Could not register Telegram bot commands menu")
     await app.updater.start_polling(drop_pending_updates=True)
     _application = app
     logger.info("Telegram bot polling started")
