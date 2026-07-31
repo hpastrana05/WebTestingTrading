@@ -142,12 +142,17 @@ def list_enabled_telegram_chats() -> list[TelegramChat]:
 def create_telegram_chat(body: TelegramChatCreate) -> TelegramChat:
     _ensure_default_telegram_chats()
     chats = _read_json("telegram_chats.json")
+    chat_id = str(body.chat_id).strip()
+    if not chat_id:
+        raise ValueError("chat_id is required")
     # Avoid duplicates by chat_id
     for row in chats:
-        if str(row.get("chat_id")) == body.chat_id:
-            raise ValueError(f"Chat already exists for chat_id={body.chat_id}")
+        if str(row.get("chat_id")).strip() == chat_id:
+            raise ValueError(f"Chat already exists for chat_id={chat_id}")
 
     stored = body.model_dump()
+    stored["chat_id"] = chat_id
+    stored["name"] = (body.name or "").strip() or "Chat"
     stored["id"] = str(uuid.uuid4())
     chats.append(stored)
     _write_json("telegram_chats.json", chats)
@@ -158,12 +163,20 @@ def update_telegram_chat(chat_entry_id: str, update: TelegramChatUpdate) -> Tele
     _ensure_default_telegram_chats()
     chats = _read_json("telegram_chats.json")
     patch = update.model_dump(exclude_none=True)
+    if "chat_id" in patch:
+        patch["chat_id"] = str(patch["chat_id"]).strip()
+        if not patch["chat_id"]:
+            raise ValueError("chat_id cannot be empty")
+    if "name" in patch:
+        patch["name"] = str(patch["name"]).strip()
+        if not patch["name"]:
+            raise ValueError("name cannot be empty")
 
     # Prevent duplicate chat_id when updating
     new_chat_id = patch.get("chat_id")
     if new_chat_id is not None:
         for row in chats:
-            if row.get("id") != chat_entry_id and str(row.get("chat_id")) == str(new_chat_id):
+            if row.get("id") != chat_entry_id and str(row.get("chat_id")).strip() == new_chat_id:
                 raise ValueError(f"Chat already exists for chat_id={new_chat_id}")
 
     for idx, row in enumerate(chats):

@@ -36,9 +36,10 @@ def _fmt_stamp(ts, interval: str) -> str:
     return stamp.strftime("%Y-%m-%d %H:%M")
 
 
-def resolve_alert_rule(ref: str) -> tuple[int, AlertRule]:
+def resolve_alert_rule(ref: str | None = None) -> tuple[int, AlertRule]:
     """
-    Resolve a rule by 1-based list index (`1`) or full/prefix UUID.
+    Resolve a rule by 1-based list index (`1`), UUID/prefix, or name substring.
+    If ref is empty and there is exactly one rule, that rule is returned.
     Returns (index, rule). Raises KeyError / ValueError on miss.
     """
     rules = storage.list_alert_rules()
@@ -47,7 +48,12 @@ def resolve_alert_rule(ref: str) -> tuple[int, AlertRule]:
 
     token = (ref or "").strip()
     if not token:
-        raise ValueError("Indica el número o id de la regla")
+        if len(rules) == 1:
+            return 1, rules[0]
+        raise ValueError(
+            "Indica el número, id o nombre de la regla.\n"
+            f"Hay {len(rules)} reglas — usa /list"
+        )
 
     if token.isdigit():
         idx = int(token)
@@ -55,11 +61,24 @@ def resolve_alert_rule(ref: str) -> tuple[int, AlertRule]:
             raise KeyError(f"Índice fuera de rango (1–{len(rules)})")
         return idx, rules[idx - 1]
 
-    matches = [(i + 1, r) for i, r in enumerate(rules) if r.id and r.id.startswith(token)]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
+    # UUID / prefix
+    id_matches = [(i + 1, r) for i, r in enumerate(rules) if r.id and r.id.startswith(token)]
+    if len(id_matches) == 1:
+        return id_matches[0]
+    if len(id_matches) > 1:
         raise ValueError(f"Id ambiguo '{token}' — usa más caracteres o el número de /list")
+
+    # Name (case-insensitive substring)
+    needle = token.casefold()
+    name_matches = [
+        (i + 1, r) for i, r in enumerate(rules) if needle in (r.name or "").casefold()
+    ]
+    if len(name_matches) == 1:
+        return name_matches[0]
+    if len(name_matches) > 1:
+        lines = ", ".join(f"#{i} {r.name}" for i, r in name_matches[:5])
+        raise ValueError(f"Nombre ambiguo '{token}': {lines}")
+
     raise KeyError(f"Regla no encontrada: {token}")
 
 

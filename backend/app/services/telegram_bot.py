@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from app.config import settings
-from app.schemas import AlertRule, AlertRuleUpdate
+from app.schemas import AlertRule, AlertRuleUpdate, TelegramChatUpdate
 from app.services import storage
 
 logger = logging.getLogger(__name__)
@@ -148,35 +148,85 @@ HELP_TEXT = """Comandos del bot
 
 /help — esta ayuda
 /ping — comprobar que el bot responde
-/list — lista de alertas configuradas
-/show <n|id> — detalle de una alerta
-/state [n|id] — estado actual (todas o una)
+/list — lista de alertas (reglas)
+/show <n|id|nombre> — detalle de una alerta
+/state [n|id|nombre] — estado actual (todas o una)
 /check — evaluar reglas ahora (envía ENTRADA/SALIDA si hay señal)
-/enable <n|id> — activar una alerta
-/disable <n|id> — desactivar una alerta
+/enable [n|id|nombre] — activar una regla de alerta
+/disable [n|id|nombre] — desactivar una regla de alerta
+/chats — chats de Telegram configurados
+/chat_on <n|nombre> — activar un chat (recibe alertas)
+/chat_off <n|nombre> — desactivar un chat (deja de recibir)
 
-Usa el número de /list (1, 2, …) o el id (o prefijo).
-Ejemplos: /state 1   /disable 2   /show a1b2c3"""
+Sin número, /enable y /disable usan la única regla si solo hay una.
+Ejemplos: /disable 1   /enable vwap   /chat_off 2"""
+
+
+def _chat_id_from_update(update) -> str | None:
+    chat = update.effective_chat
+    if chat is None:
+        return None
+    return str(chat.id)
+
+
+def _is_known_chat(chat_id: str) -> bool:
+    """True if chat is env fallback or listed in telegram_chats.json (even if disabled)."""
+    chat_id = (chat_id or "").strip()
+    env_chat = (settings.telegram_chat_id or "").strip()
+    if env_chat and chat_id == env_chat:
+        return True
+    return any(str(c.chat_id).strip() == chat_id for c in storage.list_telegram_chats())
 
 
 def _authorized(update) -> bool:
-    """Only accept messages from enabled chats configured in Alerts UI."""
-    chat = update.effective_chat
-    if chat is None:
+    """
+    Accept commands from any configured chat (enabled or disabled).
+
+    `enabled` on a chat only controls whether it *receives* alert broadcasts.
+    Disabled chats must still be able to run /enable, /chat_on, etc.
+    """
+    chat_id = _chat_id_from_update(update)
+    if not chat_id:
         return False
-    chat_id = str(chat.id)
-    # Keep the env chat as a fallback authorized chat for bot administration.
-    env_chat = (settings.telegram_chat_id or "").strip()
-    enabled = {c.chat_id for c in storage.list_enabled_telegram_chats()}
-    return chat_id == env_chat or chat_id in enabled
+    return _is_known_chat(chat_id)
 
 
 async def _deny_if_unauthorized(update) -> bool:
     if _authorized(update):
         return False
-    # Ignore silently for other chats (don't leak that a bot exists with useful replies)
-    logger.warning("Telegram command from unauthorized chat: %s", getattr(update.effective_chat, "id", None))
+    # Ignore silently for completely unknown chats
+    logger.warning(
+        "Telegram command from unauthorized chat: %s",
+        getattr(update.effective_chat, "id", None),
+    )
     return True
+
+
+def _resolve_telegram_chat(ref: str | None = None):
+    """Resolve a saved Telegram chat by 1-based index or name substring."""
+    chats = storage.list_telegram_chats()
+    if not chats:
+        raise KeyError("No hay chats configurados (añádelos en Alerts)")
+
+    token = (ref or "").strip()
+    if not token:
+        if len(chats) == 1:
+            return 1, chats[0]
+        raise ValueError(f"Indica el número o nombre del chat (hay {len(chats)}). Usa /chats")
+
+    if token.isdigit():
+        idx = int(token)
+        if idx < 1 or idx > len(chats):
+            raise KeyError(f"Índice fuera de rango (1–{len(chats)})")
+        return idx, chats[idx - 1]
+
+    needle = token.casefold()
+    matches = [(i + 1, c) for i, c in enumerate(chats) if needle in (c.name or "").casefold()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError("Nombre ambiguo — usa el número de /chats")
+    raise KeyError(f"Chat no encontrado: {token}")
 
 
 def _short_id(rule_id: str | None) -> str:
@@ -375,18 +425,48 @@ async def _set_enabled(update, context, enabled: bool) -> None:
         return
     from app.services.alerts import resolve_alert_rule
 
-    if not context.args:
-        await update.message.reply_text(f"Uso: /{'enable' if enabled else 'disable'} <n|id>")
-        return
+    verb = "enable" if enabled else "disable"
+    arg = context.args[0] if context.args else None
     try:
-        idx, rule = resolve_alert_rule(context.args[0])
-        updated = storage.update_alert_rule(rule.id, AlertRuleUpdate(enabled=enabled))
+        idx, rule = resolve_alert_rule(arg)
     except (KeyError, ValueError) as exc:
+        await update.message.reply_text(
+            f"{exc}\n\nUso: /{verb} [n|id|nombre]\nEjemplo: /{verb} 1"
+        )
+        return
+
+    if not rule.id:
+        await update.message.reply_text("La regla no tiene id — no se puede actualizar.")
+        return
+
+    if bool(rule.enabled) == bool(enabled):
+        flag = "activa" if enabled else "desactivada"
+        await update.message.reply_text(
+            f"#{idx} {rule.name} ya estaba {flag}.\nNo hubo cambios."
+        )
+        return
+
+    try:
+        updated = storage.update_alert_rule(rule.id, AlertRuleUpdate(enabled=enabled))
+        # Re-read to confirm persistence
+        confirmed = storage.get_alert_rule(rule.id)
+    except KeyError as exc:
         await update.message.reply_text(str(exc))
         return
 
-    flag = "activa" if updated.enabled else "desactivada"
-    await update.message.reply_text(f"#{idx} {updated.name} → {flag}")
+    if bool(confirmed.enabled) != bool(enabled):
+        await update.message.reply_text(
+            f"No se pudo guardar el cambio de #{idx} {rule.name}. Revisa el backend."
+        )
+        return
+
+    flag = "activa" if confirmed.enabled else "desactivada"
+    note = (
+        "El checker automático la evaluará."
+        if confirmed.enabled
+        else "El checker automático la ignorará."
+    )
+    await update.message.reply_text(f"#{idx} {updated.name} → {flag}\n{note}")
 
 
 async def cmd_enable(update, context) -> None:
@@ -395,6 +475,63 @@ async def cmd_enable(update, context) -> None:
 
 async def cmd_disable(update, context) -> None:
     await _set_enabled(update, context, False)
+
+
+async def cmd_chats(update, context) -> None:
+    if await _deny_if_unauthorized(update):
+        return
+    chats = storage.list_telegram_chats()
+    if not chats:
+        await update.message.reply_text(
+            "No hay chats configurados.\nAñádelos en la web (Alerts → Telegram chats)."
+        )
+        return
+    lines = [f"Chats Telegram ({len(chats)}):\n"]
+    for i, c in enumerate(chats, start=1):
+        flag = "ON " if c.enabled else "OFF"
+        lines.append(f"{i}. [{flag}] {c.name}\n   chat_id:{c.chat_id}")
+    lines.append("\nUsa /chat_on <n> o /chat_off <n>")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def _set_chat_enabled(update, context, enabled: bool) -> None:
+    if await _deny_if_unauthorized(update):
+        return
+    verb = "chat_on" if enabled else "chat_off"
+    arg = context.args[0] if context.args else None
+    try:
+        idx, chat = _resolve_telegram_chat(arg)
+    except (KeyError, ValueError) as exc:
+        await update.message.reply_text(
+            f"{exc}\n\nUso: /{verb} [n|nombre]\nEjemplo: /{verb} 1"
+        )
+        return
+
+    if not chat.id:
+        await update.message.reply_text("El chat no tiene id interno.")
+        return
+
+    if bool(chat.enabled) == bool(enabled):
+        flag = "activo" if enabled else "desactivado"
+        await update.message.reply_text(f"#{idx} {chat.name} ya estaba {flag}.")
+        return
+
+    try:
+        updated = storage.update_telegram_chat(chat.id, TelegramChatUpdate(enabled=enabled))
+    except (KeyError, ValueError) as exc:
+        await update.message.reply_text(str(exc))
+        return
+
+    flag = "activo (recibe alertas)" if updated.enabled else "desactivado (no recibe alertas)"
+    await update.message.reply_text(f"#{idx} {updated.name} → {flag}")
+
+
+async def cmd_chat_on(update, context) -> None:
+    await _set_chat_enabled(update, context, True)
+
+
+async def cmd_chat_off(update, context) -> None:
+    await _set_chat_enabled(update, context, False)
 
 
 def _build_application():
@@ -414,6 +551,9 @@ def _build_application():
     app.add_handler(CommandHandler("check", cmd_check))
     app.add_handler(CommandHandler("enable", cmd_enable))
     app.add_handler(CommandHandler("disable", cmd_disable))
+    app.add_handler(CommandHandler("chats", cmd_chats))
+    app.add_handler(CommandHandler("chat_on", cmd_chat_on))
+    app.add_handler(CommandHandler("chat_off", cmd_chat_off))
     return app
 
 
@@ -425,7 +565,10 @@ async def start_telegram_bot() -> None:
         logger.info("Telegram bot disabled (no TELEGRAM_BOT_TOKEN)")
         return
     if not (settings.telegram_chat_id or "").strip():
-        logger.warning("TELEGRAM_CHAT_ID missing — bot will ignore all commands")
+        # Commands still work for chats saved in telegram_chats.json
+        logger.warning(
+            "TELEGRAM_CHAT_ID missing — only chats saved in Alerts UI can run commands"
+        )
 
     app = _build_application()
     if app is None:

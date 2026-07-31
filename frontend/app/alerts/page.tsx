@@ -248,7 +248,7 @@ export default function AlertsPage() {
           <code>ALERT_CHECK_INTERVAL_SECONDS</code>). You can also run{" "}
           <strong>Check rules now</strong> or Telegram <code>/check</code>. Bot commands:{" "}
           <code>/help</code>, <code>/list</code>, <code>/state</code>, <code>/enable</code>,{" "}
-          <code>/disable</code>.
+          <code>/disable</code>, <code>/chats</code>, <code>/chat_on</code>, <code>/chat_off</code>.
         </p>
       </div>
 
