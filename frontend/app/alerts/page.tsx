@@ -142,6 +142,38 @@ export default function AlertsPage() {
     await refresh();
   }
 
+  async function toggleRuleEnabled(rule: AlertRule) {
+    if (!rule.id) return;
+    setError("");
+    setStatus("");
+    try {
+      await api.updateAlertRule(rule.id, { enabled: !rule.enabled });
+      setStatus(`Rule ${rule.name} ${rule.enabled ? "disabled" : "enabled"}.`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update rule");
+    }
+  }
+
+  async function setAllRulesEnabled(enabled: boolean) {
+    setError("");
+    setStatus("");
+    try {
+      const targets = rules.filter((r) => r.id && r.enabled !== enabled);
+      for (const rule of targets) {
+        await api.updateAlertRule(rule.id!, { enabled });
+      }
+      setStatus(
+        targets.length
+          ? `${targets.length} rule(s) ${enabled ? "enabled" : "disabled"}.`
+          : `All rules already ${enabled ? "enabled" : "disabled"}.`
+      );
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update rules");
+    }
+  }
+
   async function addChat(event: FormEvent) {
     event.preventDefault();
     setError("");
@@ -247,8 +279,9 @@ export default function AlertsPage() {
           Rules are checked automatically every minute by the backend (configurable via{" "}
           <code>ALERT_CHECK_INTERVAL_SECONDS</code>). You can also run{" "}
           <strong>Check rules now</strong> or Telegram <code>/check</code>. Bot commands:{" "}
-          <code>/help</code>, <code>/list</code>, <code>/state</code>, <code>/enable</code>,{" "}
-          <code>/disable</code>, <code>/chats</code>, <code>/chat_on</code>, <code>/chat_off</code>.
+          <code>/help</code>, <code>/list</code>, <code>/state</code>, <code>/enable 1 2</code>,{" "}
+          <code>/disable all</code>, <code>/chats</code>, <code>/chat_on</code>,{" "}
+          <code>/chat_off</code>.
         </p>
       </div>
 
@@ -425,9 +458,21 @@ export default function AlertsPage() {
 
       <section className="panel stack">
         <h2>Saved rules</h2>
-        <button className="secondary" type="button" onClick={runCheck}>
-          Check rules now
-        </button>
+        <div className="row">
+          <button className="secondary" type="button" onClick={runCheck}>
+            Check rules now
+          </button>
+          {rules.length > 0 && (
+            <>
+              <button className="secondary" type="button" onClick={() => setAllRulesEnabled(true)}>
+                Enable all
+              </button>
+              <button className="secondary" type="button" onClick={() => setAllRulesEnabled(false)}>
+                Disable all
+              </button>
+            </>
+          )}
+        </div>
         {rules.length === 0 ? (
           <p className="muted">No rules yet.</p>
         ) : (
@@ -452,13 +497,22 @@ export default function AlertsPage() {
                     <td>{rule.interval || "1d"}</td>
                     <td>{rule.enabled ? "yes" : "no"}</td>
                     <td>
-                      <button
-                        className="secondary"
-                        type="button"
-                        onClick={() => removeRule(rule.id)}
-                      >
-                        Delete
-                      </button>
+                      <div className="row" style={{ gap: 8 }}>
+                        <button
+                          className="secondary"
+                          type="button"
+                          onClick={() => toggleRuleEnabled(rule)}
+                        >
+                          {rule.enabled ? "Disable" : "Enable"}
+                        </button>
+                        <button
+                          className="secondary"
+                          type="button"
+                          onClick={() => removeRule(rule.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -236,6 +236,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(rule),
     }),
+  updateAlertRule: (
+    id: string,
+    body: Partial<Pick<AlertRule, "name" | "strategy_id" | "symbol" | "interval" | "period" | "parameters" | "enabled" | "notify_on">>
+  ) =>
+    request<AlertRule>(`/api/alerts/rules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   deleteAlertRule: (id: string) =>
     request<{ ok: boolean }>(`/api/alerts/rules/${id}`, { method: "DELETE" }),
 

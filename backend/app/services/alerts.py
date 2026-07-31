@@ -82,6 +82,55 @@ def resolve_alert_rule(ref: str | None = None) -> tuple[int, AlertRule]:
     raise KeyError(f"Regla no encontrada: {token}")
 
 
+def resolve_alert_rules(refs: list[str] | None = None) -> list[tuple[int, AlertRule]]:
+    """
+    Resolve one or more rules.
+
+    - empty refs + 1 rule → that rule
+    - `all` / `*` → every rule
+    - otherwise each token is resolved (deduped by rule id)
+    """
+    rules = storage.list_alert_rules()
+    if not rules:
+        raise KeyError("No hay reglas de alerta")
+
+    tokens = [t.strip() for t in (refs or []) if t and t.strip()]
+    if not tokens:
+        if len(rules) == 1:
+            return [(1, rules[0])]
+        raise ValueError(
+            "Indica números, ids o nombres (varios separados por espacio), o `all`.\n"
+            f"Hay {len(rules)} reglas — usa /list"
+        )
+
+    if len(tokens) == 1 and tokens[0].casefold() in {"all", "*", "todas", "todos"}:
+        return [(i + 1, r) for i, r in enumerate(rules)]
+
+    resolved: list[tuple[int, AlertRule]] = []
+    seen: set[str] = set()
+    errors: list[str] = []
+    for token in tokens:
+        try:
+            idx, rule = resolve_alert_rule(token)
+        except (KeyError, ValueError) as exc:
+            errors.append(str(exc))
+            continue
+        key = rule.id or f"#{idx}"
+        if key in seen:
+            continue
+        seen.add(key)
+        resolved.append((idx, rule))
+
+    if errors and not resolved:
+        raise ValueError("\n".join(errors))
+    if errors:
+        # Partial success — caller can still apply to resolved and mention errors
+        pass
+    if not resolved:
+        raise KeyError("Ninguna regla encontrada")
+    return resolved
+
+
 def signal_label(signal: int) -> str:
     if signal == 1:
         return "LONG"

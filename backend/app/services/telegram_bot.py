@@ -151,8 +151,8 @@ Alertas (reglas)
 /show <n|id|nombre> — detalle de una alerta
 /state [n|id|nombre] — estado actual (todas o una)
 /check — evaluar ahora (envía ENTRADA/SALIDA si hay señal)
-/enable [n|id|nombre] — activar una regla
-/disable [n|id|nombre] — desactivar una regla
+/enable [n…] — activar regla(s) (varios o all)
+/disable [n…] — desactivar regla(s) (varios o all)
 
 Chats Telegram
 /chats — lista de chats
@@ -163,8 +163,8 @@ Otros
 /help — esta ayuda
 /ping — comprobar que el bot responde
 
-Sin número, /enable /disable /chat_on /chat_off usan el único ítem si solo hay uno.
-Ejemplos: /disable 1 · /enable vwap · /chat_off 2 · /chats"""
+Sin número, /enable /disable usan la única regla si solo hay una.
+Ejemplos: /disable 1 2 3 · /disable all · /enable vwap · /chat_off 2"""
 
 
 BOT_COMMANDS = [
@@ -174,8 +174,8 @@ BOT_COMMANDS = [
     ("show", "Detalle de una alerta"),
     ("state", "Estado actual de alertas"),
     ("check", "Evaluar reglas ahora"),
-    ("enable", "Activar una regla de alerta"),
-    ("disable", "Desactivar una regla de alerta"),
+    ("enable", "Activar regla(s) — varios o all"),
+    ("disable", "Desactivar regla(s) — varios o all"),
     ("chats", "Lista de chats Telegram"),
     ("chat_on", "Activar un chat (recibe alertas)"),
     ("chat_off", "Desactivar un chat"),
@@ -443,50 +443,58 @@ async def cmd_check(update, context) -> None:
 async def _set_enabled(update, context, enabled: bool) -> None:
     if await _deny_if_unauthorized(update):
         return
-    from app.services.alerts import resolve_alert_rule
+    from app.services.alerts import resolve_alert_rules
 
     verb = "enable" if enabled else "disable"
-    arg = context.args[0] if context.args else None
     try:
-        idx, rule = resolve_alert_rule(arg)
+        targets = resolve_alert_rules(list(context.args) if context.args else None)
     except (KeyError, ValueError) as exc:
         await update.message.reply_text(
-            f"{exc}\n\nUso: /{verb} [n|id|nombre]\nEjemplo: /{verb} 1"
+            f"{exc}\n\n"
+            f"Uso: /{verb} [n|id|nombre]…\n"
+            f"Varias: /{verb} 1 2 3\n"
+            f"Todas: /{verb} all"
         )
         return
 
-    if not rule.id:
-        await update.message.reply_text("La regla no tiene id — no se puede actualizar.")
-        return
+    changed: list[str] = []
+    unchanged: list[str] = []
+    failed: list[str] = []
 
-    if bool(rule.enabled) == bool(enabled):
-        flag = "activa" if enabled else "desactivada"
-        await update.message.reply_text(
-            f"#{idx} {rule.name} ya estaba {flag}.\nNo hubo cambios."
-        )
-        return
+    for idx, rule in targets:
+        label = f"#{idx} {rule.name}"
+        if not rule.id:
+            failed.append(f"{label}: sin id")
+            continue
+        if bool(rule.enabled) == bool(enabled):
+            unchanged.append(label)
+            continue
+        try:
+            storage.update_alert_rule(rule.id, AlertRuleUpdate(enabled=enabled))
+            confirmed = storage.get_alert_rule(rule.id)
+            if bool(confirmed.enabled) != bool(enabled):
+                failed.append(f"{label}: no se guardó")
+            else:
+                changed.append(label)
+        except KeyError as exc:
+            failed.append(f"{label}: {exc}")
 
-    try:
-        updated = storage.update_alert_rule(rule.id, AlertRuleUpdate(enabled=enabled))
-        # Re-read to confirm persistence
-        confirmed = storage.get_alert_rule(rule.id)
-    except KeyError as exc:
-        await update.message.reply_text(str(exc))
-        return
+    flag = "activas" if enabled else "desactivadas"
+    lines: list[str] = []
+    if changed:
+        lines.append(f"→ {flag} ({len(changed)}):")
+        lines.extend(f"  {x}" for x in changed)
+    if unchanged:
+        already = "ya activas" if enabled else "ya desactivadas"
+        lines.append(f"{already} ({len(unchanged)}):")
+        lines.extend(f"  {x}" for x in unchanged)
+    if failed:
+        lines.append(f"Errores ({len(failed)}):")
+        lines.extend(f"  {x}" for x in failed)
+    if not lines:
+        lines.append("No hubo cambios.")
 
-    if bool(confirmed.enabled) != bool(enabled):
-        await update.message.reply_text(
-            f"No se pudo guardar el cambio de #{idx} {rule.name}. Revisa el backend."
-        )
-        return
-
-    flag = "activa" if confirmed.enabled else "desactivada"
-    note = (
-        "El checker automático la evaluará."
-        if confirmed.enabled
-        else "El checker automático la ignorará."
-    )
-    await update.message.reply_text(f"#{idx} {updated.name} → {flag}\n{note}")
+    await update.message.reply_text("\n".join(lines))
 
 
 async def cmd_enable(update, context) -> None:
