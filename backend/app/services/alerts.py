@@ -29,8 +29,13 @@ def _fmt_price(value: float | None) -> str:
     return f"{float(value):.4f}"
 
 
-def _fmt_stamp(ts, interval: str) -> str:
+def _fmt_stamp(ts, interval: str, timezone: str = "Europe/Madrid") -> str:
+    """Format bar time in Spanish local time (Europe/Madrid by default)."""
     stamp = pd.Timestamp(ts)
+    if stamp.tzinfo is None:
+        # Yahoo intraday bars are UTC when naive
+        stamp = stamp.tz_localize("UTC")
+    stamp = stamp.tz_convert(timezone)
     if interval in ("1d", "5d", "1wk", "1mo", "3mo"):
         return stamp.strftime("%Y-%m-%d")
     return stamp.strftime("%Y-%m-%d %H:%M")

@@ -45,7 +45,7 @@ function previewMessage(opts: {
       "Precio actual: 2650.50",
       "Motivo: Señal de entrada",
       "Estado: ABIERTA",
-      "Hora: 2026-07-24 15:45",
+      "Hora (ES): 2026-07-24 17:45",
     ].join("\n");
   }
   return [
@@ -54,14 +54,18 @@ function previewMessage(opts: {
     `Estrategia: ${strategy}`,
     `Regla: ${opts.ruleName || "Mi alerta"}`,
     "",
-    "Precio: 2681.10",
-    "Entrada: 2650.50",
-    "Salida: 2681.10",
-    "SL: 2635.20  (−15.30 pts)",
-    "TP: 2681.10  (+30.60 pts)",
     "Motivo: Take profit (TP)",
     "Estado: CERRADA",
-    "Hora: 2026-07-24 16:10",
+    "",
+    "Resumen del trade:",
+    "  Entrada: 2650.50",
+    "  Salida:  2681.10",
+    "  SL:      2635.20  (−15.30 pts)",
+    "  TP:      2681.10  (+30.60 pts)",
+    "  Resultado:  (+30.60 pts)",
+    "",
+    "Precio actual: 2681.10",
+    "Hora (ES): 2026-07-24 18:10",
   ].join("\n");
 }
 

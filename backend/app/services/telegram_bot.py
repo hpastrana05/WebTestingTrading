@@ -100,6 +100,7 @@ def format_signal_alert(
 ) -> str:
     """
     Telegram body. On ENTRADA, SL/TP are the levels to place at the broker.
+    On SALIDA, motivo goes near the top.
     """
     header = f"[{alert_type}] {ticker} · {timeframe} · {side}"
     lines = [header, "", f"Estrategia: {strategy_name}"]
@@ -108,6 +109,7 @@ def format_signal_alert(
 
     is_entry = alert_type.upper() == "ENTRADA"
     entry = entry_price if entry_price is not None else current_price
+    motivo = trigger_reason or "—"
 
     lines.append("")
     if is_entry:
@@ -123,24 +125,29 @@ def format_signal_alert(
             lines.append("  TP:     — (la estrategia no define take)")
         lines.append("")
         lines.append(f"Precio actual: {_price(current_price)}")
+        lines.append(f"Motivo: {motivo}")
+        lines.append(f"Estado: {status or '—'}")
+        lines.append(f"Hora (ES): {timestamp or '—'}")
     else:
-        lines.extend(
-            [
-                f"Precio: {_price(current_price)}",
-                f"Entrada: {_price(entry_price)}",
-                f"Salida: {_price(exit_price)}",
-                f"SL: {_price(stop_loss)}{_delta(entry_price, stop_loss) if stop_loss is not None else ''}",
-                f"TP: {_price(take_profit)}{_delta(entry_price, take_profit) if take_profit is not None else ''}",
-            ]
-        )
+        # SALIDA — motivo first, then trade summary
+        lines.append(f"Motivo: {motivo}")
+        lines.append(f"Estado: {status or '—'}")
+        lines.append("")
+        lines.append("Resumen del trade:")
+        lines.append(f"  Entrada: {_price(entry_price)}")
+        lines.append(f"  Salida:  {_price(exit_price)}")
+        if stop_loss is not None:
+            lines.append(f"  SL:      {_price(stop_loss)}{_delta(entry_price, stop_loss)}")
+        if take_profit is not None:
+            lines.append(f"  TP:      {_price(take_profit)}{_delta(entry_price, take_profit)}")
+        pnl_txt = _delta(entry_price, exit_price)
+        if pnl_txt:
+            # _delta already has leading spaces and parentheses
+            lines.append(f"  Resultado:{pnl_txt}")
+        lines.append("")
+        lines.append(f"Precio actual: {_price(current_price)}")
+        lines.append(f"Hora (ES): {timestamp or '—'}")
 
-    lines.extend(
-        [
-            f"Motivo: {trigger_reason or '—'}",
-            f"Estado: {status or '—'}",
-            f"Hora: {timestamp or '—'}",
-        ]
-    )
     return "\n".join(lines)
 
 
